@@ -6,7 +6,7 @@
 
 - 只读资源导向：除认证外全部 `GET`。
 - 一切查询都带时间范围，默认值明确，不做「全表返回」。
-- 服务端只做聚合、裁剪、降采样，不重算 TeslaMate 已经算好的指标（见 ADR-0002）。
+- 服务端只做聚合、裁剪、降采样，不重算 TeslaMate 已经算好的指标（见 ADR-0002）。例外：电耗与能量不是存储列，必须按 TeslaMate 的既有口径推导——`energy_kwh = (start_range_km − end_range_km) × cars.efficiency`，`cars.efficiency` 单位是 kWh/km，取哪个 range 由 `settings.preferred_range` 决定；`range_diff ≤ 0` 或效率缺失时返回 `null`，不返回负值。
 - 客户端拿到的每个 DTO 都自带 `freshness`，不依赖额外请求判断数据新旧。
 - 不向客户端暴露 TeslaMate 表名；DTO 字段用 `GLOSSARY.md` 的代码名。
 
@@ -20,7 +20,7 @@
 | 字段命名 | `snake_case`（OpenAPI 生成器负责映射 Dart 命名） |
 | 时间 | ISO-8601 UTC，带 `Z`；区间为半开 `[from, to)` |
 | 距离 / 能量 / 功率 / 温度 | km / kWh / kW / °C |
-| 电耗 | Wh/km，字段名必须带 `_net` 或 `_gross` 后缀 |
+| 电耗 | Wh/km；行程级只有网侧单值 `consumption_wh_km`；统计级区分 `consumption_wh_km_net` 与 `consumption_wh_km_gross` |
 | 时长 | 分钟（整数），字段名 `duration_min` |
 | 分页 | `limit`（默认 20，最大 100）+ `cursor`（不透明串）；响应含 `next_cursor`，`null` 表示到底 |
 | 排序 | 默认按 `started_at` 倒序，同时间按 `id` 倒序 |
@@ -92,7 +92,7 @@
     "today": {"drives": 2, "distance_km": 34.2, "energy_kwh": 5.6},
     "month": {"drives": 18, "distance_km": 412.3, "energy_kwh": 68.1}
   },
-  "last_drive": {"id": 9021, "started_at": "2026-10-21T08:12:00Z", "distance_km": 12.3, "consumption_wh_km_net": 168},
+  "last_drive": {"id": 9021, "started_at": "2026-10-21T08:12:00Z", "distance_km": 12.3, "consumption_wh_km": 168},
   "last_charge": {"id": 331, "started_at": "2026-10-20T22:04:00Z", "energy_kwh": 31.2, "end_soc": 80},
   "firmware": {"version": "2026.32.6", "installed_at": "2026-10-02T03:11:00Z"},
   "freshness": {"last_position_at": "2026-10-21T12:30:00Z", "last_state_at": "2026-10-21T12:29:00Z"}
@@ -110,8 +110,7 @@
   "distance_km": 12.3,
   "duration_min": 21,
   "energy_kwh": 2.1,
-  "consumption_wh_km_net": 168,
-  "consumption_wh_km_gross": 184,
+  "consumption_wh_km": 168,
   "speed_max_kmh": 112,
   "outside_temp_c_avg": 18.2,
   "inside_temp_c_avg": 21.0,
