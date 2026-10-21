@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mileaf
+      POSTGRES_PASSWORD: mileaf
+      POSTGRES_DB: mileaf
+    ports:
+      - "5432:5432"
+    volumes:
+      - mileaf-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mileaf -d mileaf"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    environment:
+      MILEAF_DATABASE_URL: postgresql+asyncpg://mileaf:mileaf@db:5432/mileaf
+      MILEAF_JWT_SECRET: ${MILEAF_JWT_SECRET:-dev-only-change-me-dev-only-change-me}
+      MILEAF_AGENT_TOKEN_PEPPER: ${MILEAF_AGENT_TOKEN_PEPPER:-dev-only-change-me-dev-only-change-me}
+    command: ["sh", "-c", "alembic upgrade head && uvicorn mileaf.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mileaf-db:
