@@ -7,6 +7,6 @@ __pycache__/
 .env
 data/
 *.sqlite3
-tmp_alembic.db
 /teslamate
 /MileafMobile
+.DS_Store
