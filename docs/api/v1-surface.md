@@ -246,3 +246,10 @@ schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`�
   分类沿用 v4.3.0 charging-stats 的非空相数众数；全 NULL 为 DC，完全无采样
   为未知。`fast_charger_present` 不覆盖该面板规则；相数众数并列时 PostgreSQL
   按升序取首个值，在当前正相数约束下不影响 AC/DC 分类。
+
+地点通过 `mileaf.queries.locations.location_sql(position="p", address="a", geofence="g")`
+在已关联位置点、地址、围栏的 SELECT 中输出结构化 JSONB；别名只能来自开发者常量。
+`fetch_locations(connection, refs)` 可将一页行程的起终点或充电会话的
+`LocationRef(position_id, address_id, geofence_id)` 合并为一次查询，并按输入顺序
+返回 `Location`，重复引用不丢失。`address` 为地址自身的回退显示名，`geofence`
+为围栏名；`display_name` 优先围栏。空白名称按缺失处理，坐标只来自位置点。
