@@ -60,8 +60,8 @@ DRIVE_SOURCE = f"""
         {consumption_wh_km_sql()} AS consumption_wh_km,
         s.preferred_range::text AS range_kind,
         /* TeslaMate v4.3.0 drives: stored km / minutes * 60 -> km/h;
-           duration_min takes precedence; elapsed time is the NULL fallback. */
-        d.distance / nullif(coalesce(d.duration_min,
+           duration_min takes precedence; zero or NULL elapsed time is the fallback. */
+        d.distance / nullif(coalesce(nullif(d.duration_min, 0),
             extract(epoch FROM (d.end_date-d.start_date))/60),0) * 60 AS speed_avg_kmh,
         sp.battery_level AS start_battery_level, ep.battery_level AS end_battery_level
     FROM drives d JOIN cars c ON c.id=d.car_id CROSS JOIN settings s

@@ -37,6 +37,10 @@ async def test_drive_locations_speed_fallback_and_preferred_range(client, db):
     await db.execute("UPDATE settings SET preferred_range='ideal',unit_of_length='mi'")
     body = (await client.get("/v1/drives/1")).json()
     assert body["speed_avg_kmh"] == 10  # 20 km / two elapsed hours
+    await db.execute("UPDATE drives SET duration_min=0 WHERE id=1")
+    zero_duration = (await client.get("/v1/drives/1")).json()
+    assert zero_duration["speed_avg_kmh"] == 10  # Grafana also falls back on duration_min=0
+    assert zero_duration["range_kind"] == "ideal"
     assert body["range_kind"] == "ideal"
     assert body["distance_km"] == 20
     assert body["energy_kwh"] == 8.25  # (380 - 325) * 0.15

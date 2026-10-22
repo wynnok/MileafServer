@@ -1,6 +1,6 @@
 # TeslaMate 夹具基准与场景
 
-A2（#8）提供只读 API 的 PostgreSQL 测试数据，业务口径仍由后续票据实现。所有数据都是合成数据，不导出真实实例，也不存储 Tesla 凭据。
+A2（#8）提供只读 API 的 PostgreSQL 测试数据；业务口径由后续 C/D 切片实现，本文件只描述夹具。所有数据都是合成数据，不导出真实实例，也不存储 Tesla 凭据。
 
 ## 来源与版本
 
@@ -19,7 +19,7 @@ A2（#8）提供只读 API 的 PostgreSQL 测试数据，业务口径仍由后�
 | 表基础与空值 | `priv/repo/migrations/20190330*_create_*.exs`、`20190415130006_create_addresses.exs`、`20191117171307_car_settings.exs` |
 | numeric 精度与小整数 | `20200410112005_database_efficiency_improvements.exs`、`20260718160000_increase_geofence_cost_precision.exs` |
 | UTC 无时区时间戳 | `20191020130234_increase_datetime_precision.exs`（Ecto `utc_datetime_usec` 对应 `timestamp(6) without time zone`） |
-| 私有凭据表位置 | `20250924215353_create_private_schema.exs`（投影只有空表，用于后续权限探针） |
+| 私有凭据表位置 | `20250924215353_create_private_schema.exs`（投影只有空表，用于权限探针） |
 | 正相数约束 | `20260807090000_enforce_positive_charger_phases.exs` |
 | 展示单位枚举名 | `20200528173223_rename_unit_enums.exs` |
 
@@ -103,6 +103,6 @@ UV_CACHE_DIR=.cache/uv uv run pytest -m slow
 | 固件记录 | `updates.id=1`，版本 2026.2.3，2/15 08:30 安装结束 |
 | 连通性 | `health_client.get('/v1/health')`，真实 PostgreSQL |
 
-#6 的主数据截止 3/15 与明确列出的 3/28–30 DST 场景冲突：保留显式 DST 特例，其余主数据从 1/1 到固定时钟，时钟不随运行时间改变。未来 DST 会话的采样只供分桶使用；首页 freshness 基于位置点/状态，最新位置点仍固定在时钟之前。
+#6 的主数据截止 3/15 与明确列出的 3/28–30 DST 场景冲突：保留显式 DST 特例，其余主数据从 1/1 到固定时钟，时钟不随运行时间改变。未来 DST 行程与会话用于分桶边界；它们也晚于固定时钟，因此概览的 `last_drive` / `last_charge` 可能选中这些记录，而 `freshness` 仍只取时钟前的位置点/状态。
 
-另一个已核实并经用户确认的偏差：v4.3.0 migration 已将非正 `charger_phases` 清为 NULL，且有 `CHECK (charger_phases > 0)`。因此不能照 #6 装载相数为 0 的 DC 数据；保留真实约束并改用 `fast_charger_present=true` 的超充采样。后续 #17 必须修正“相数众数为 0 即 DC”的旧假设，不能通过删除约束实现它。
+另一个已核实并经用户确认的偏差：v4.3.0 migration 已将非正 `charger_phases` 清为 NULL，且有 `CHECK (charger_phases > 0)`。因此不能照 #6 装载相数为 0 的 DC 数据；保留真实约束并改用 `fast_charger_present=true` 的超充采样。B8（#17）已按此修正 AC/DC 判定，并保留上游约束；不能通过删除约束实现旧假设。

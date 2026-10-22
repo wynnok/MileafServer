@@ -51,6 +51,13 @@ SESSION_SOURCE = f"""
     SELECT cp.*, cp.car_id AS vehicle_id,
         cp.start_date AT TIME ZONE 'UTC' AS started_at,
         cp.end_date AT TIME ZONE 'UTC' AS ended_at,
+        /* TeslaMate fills the process aggregate on completion; an active session keeps
+           its current cumulative value in the latest charge sample. */
+        CASE WHEN cp.end_date IS NULL THEN coalesce(
+            (SELECT c.charge_energy_added FROM charges c
+             WHERE c.charging_process_id=cp.id
+             ORDER BY c.date DESC,c.id DESC LIMIT 1), cp.charge_energy_added)
+        ELSE cp.charge_energy_added END AS energy_added_kwh,
         {is_dc_sql()} AS is_dc,
         (SELECT mode() WITHIN GROUP (ORDER BY charger_phases)
          FROM charges WHERE charging_process_id=cp.id) AS charger_phases_mode
@@ -75,7 +82,7 @@ async def session_models(
                 started_at=row["started_at"],
                 ended_at=row["ended_at"],
                 duration_min=None if active else row["duration_min"],
-                energy_added_kwh=row["charge_energy_added"],
+                energy_added_kwh=row["energy_added_kwh"],
                 energy_used_kwh=row["charge_energy_used"],
                 start_soc=row["start_battery_level"],
                 end_soc=None if active else row["end_battery_level"],
@@ -222,6 +229,7 @@ CAPABILITIES["charging_session_details"] = {
     "charges": {
         "id": ("int4",),
         "date": ("timestamp",),
+        "charge_energy_added": ("numeric",),
         "charger_power": ("int2",),
         "battery_level": ("int2",),
     },

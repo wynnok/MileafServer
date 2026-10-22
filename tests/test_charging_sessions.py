@@ -58,3 +58,14 @@ async def test_charging_series_dense_sparse_empty_and_missing(client, db):
         assert (await client.get(f"{url}/1/series", params=params)).status_code == 400
     assert (await client.get(f"{url}/999/series")).status_code == 404
     assert (await client.get(f"{url}/1/series", headers={"Authorization": ""})).status_code == 401
+
+
+async def test_active_session_energy_uses_latest_charge_sample(client, db):
+    # TeslaMate leaves the process aggregate NULL until charging completes.
+    await db.execute("UPDATE charging_processes SET charge_energy_added=NULL WHERE id=8")
+    detail = (await client.get("/v1/charging-sessions/8")).json()
+    assert detail["is_active"] is True
+    assert detail["energy_added_kwh"] == 20  # latest sample's cumulative value
+    listing = (await client.get("/v1/vehicles/1/charging-sessions")).json()
+    active = next(item for item in listing["items"] if item["id"] == 8)
+    assert active["energy_added_kwh"] == 20

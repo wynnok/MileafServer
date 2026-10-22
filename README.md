@@ -12,7 +12,8 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 `GET /v1/health` 匿名检查数据库连接，数据库不可达时返回 503。
 
 数据库应使用只读专用角色，连接池会额外设置只读事务与查询超时。
-当前提供健康检查、单站点认证，以及供后续业务端点使用的单位与缓存原语。
+已提供健康检查、单站点认证、元信息，以及车辆、概览、行程、充电会话与统计端点；
+单位与缓存原语由这些端点复用。
 
 首次调用 `POST /v1/auth/setup`，JSON 请求体为 `{"password":"YOUR_ACCESS_PASSWORD"}`，
 口令至少 10 字符；随后用相同请求体调用 `POST /v1/auth/login` 获取 `token` 与
@@ -32,7 +33,7 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 
 进程内缓存默认 TTL 为 30 秒、容量为 256 条，可通过 `MILEAF_CACHE_TTL_SECONDS`
 与 `MILEAF_CACHE_CAPACITY` 配置；TTL 设为 0 关闭服务端缓存。缓存命中不改写
-`freshness`。各业务端点后续独立接入，并声明自身的缓存策略。
+`freshness`。概览、行程与充电端点使用进程内缓存并声明自身 TTL；统计每次重新聚合。
 
 ## 验证
 

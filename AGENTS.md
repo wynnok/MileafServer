@@ -2,7 +2,7 @@
 
 TeslaMate 数据的只读 API 层，供 Flutter 应用 MileafMobile 调用。不修改 TeslaMate 数据库结构，不读取或保存 Tesla 凭据。
 
-- 当前阶段：设计文档，代码尚未落地。先读 `docs/product/v1-scope.md` 和 `docs/adr/`。
+- 当前阶段：v1 后端实现已完成（#7–#27），等待 #28 与 Grafana 对账验收。产品范围见 `docs/product/v1-scope.md`，边界见 `docs/adr/`。
 - 技术栈：Python 3.12 + FastAPI + asyncpg（见 `docs/adr/0001-backend-runtime.md`）；没有自有业务库，不写 TeslaMate。
 - 数据来源与边界见 `docs/adr/0002-read-only-teslamate-adapter.md`。
 - 领域词汇以 `GLOSSARY.md` 为准，不要引入同义词。

@@ -134,9 +134,13 @@ async def summary(
             ),
             query(
                 "SELECT id,start_date AT TIME ZONE 'UTC' AS started_at, "
-                "charge_energy_added AS energy_kwh, "
+                "CASE WHEN end_date IS NULL THEN coalesce("
+                "(SELECT c.charge_energy_added FROM charges c "
+                "WHERE c.charging_process_id=cp.id ORDER BY c.date DESC,c.id DESC LIMIT 1), "
+                "cp.charge_energy_added) ELSE cp.charge_energy_added END AS energy_kwh, "
                 "CASE WHEN end_date IS NOT NULL THEN end_battery_level END AS end_soc "
-                "FROM charging_processes WHERE car_id=$1 ORDER BY start_date DESC,id DESC LIMIT 1",
+                "FROM charging_processes cp WHERE car_id=$1 "
+                "ORDER BY start_date DESC,id DESC LIMIT 1",
                 vehicle.id,
             ),
             query(
@@ -193,6 +197,7 @@ async def summary(
 
 CAPABILITIES["summary"] = {
     "positions": {"odometer": ("float8",)},
+    "charges": {"charge_energy_added": ("numeric",)},
     "updates": {
         "id": ("int4",),
         "car_id": ("int2",),

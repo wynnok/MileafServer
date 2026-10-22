@@ -68,3 +68,15 @@ async def test_summary_missing_power_nonpositive_energy_and_cache_equivalence(cl
         "last_position_at": "2026-03-15T11:55:00Z",
         "last_state_at": "2026-03-14T23:00:00Z",
     }
+
+
+async def test_summary_active_charge_energy_uses_latest_sample(client, db):
+    await db.execute("DELETE FROM charging_processes WHERE id=9")
+    await db.execute("UPDATE charging_processes SET charge_energy_added=NULL WHERE id=8")
+    body = (await client.get("/v1/vehicles/1/summary")).json()
+    assert body["last_charge"] == {
+        "id": 8,
+        "started_at": "2026-03-15T11:00:00Z",
+        "energy_kwh": 20,
+        "end_soc": None,
+    }

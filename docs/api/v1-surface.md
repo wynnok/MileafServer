@@ -7,7 +7,7 @@
 - 只读资源导向：除认证外全部 `GET`。
 - 一切查询都带时间范围，默认值明确，不做「全表返回」。
 - 服务端只做聚合、裁剪、降采样，不重算 TeslaMate 已经算好的指标（见 ADR-0002）。例外：电耗与能量不是存储列，必须按 TeslaMate 的既有口径推导——`energy_kwh = (start_range_km − end_range_km) × cars.efficiency`，`cars.efficiency` 单位是 kWh/km，取哪个 range 由 `settings.preferred_range` 决定；`range_diff ≤ 0` 或效率缺失时返回 `null`，不返回负值。
-- 客户端拿到的每个 DTO 都自带 `freshness`，不依赖额外请求判断数据新旧。
+- 概览、车辆列表与元信息自带 `freshness`；其它 DTO 以自身时间字段表达数据时间，不额外伪造新鲜度。
 - 不向客户端暴露 TeslaMate 表名；DTO 字段用 `GLOSSARY.md` 的代码名。
 
 ## 通用约定
@@ -25,7 +25,7 @@
 | 分页 | `limit`（默认 20，最大 100）+ `cursor`（不透明串）；非法参数返回 400；响应含 `next_cursor`，`null` 表示到底 |
 | 排序 | 默认按 `started_at` 倒序，同时间按 `id` 倒序 |
 | 可空 | TeslaMate 尚未回填的聚合值返回 `null`，不用 0 代替 |
-| 缓存 | 列表、详情、统计与概览返回 `ETag` 和 `Cache-Control: private, max-age=30`；内容未变返回 304；概览另有进程内 30 秒 TTL 缓存，统计实时聚合、不做服务端缓存 |
+| 缓存 | 列表、详情、统计与概览返回 `ETag` 和 `Cache-Control: private, max-age=30`；内容未变返回 304；概览、行程与充电端点另有进程内 30 秒 TTL 缓存，统计实时聚合、不做服务端缓存 |
 | 错误 | `{"error": {"code": "...", "message": "..."}}`，`code` 稳定，`message` 可读 |
 | 版本 | `/v1` 内只做加法；破坏性变更开 `/v2` |
 | 服务端超时 | 单查询 `statement_timeout` 5s，超时返回 `503 upstream_timeout` |
@@ -65,7 +65,7 @@ TTL 使用单调时钟，默认 30 秒；容量默认 256 条，满时淘汰最�
 ETag 哈希覆盖已序列化 JSON、路径与完整查询串；支持 `If-None-Match` 的列表、弱比较
 和通配符。304 不带响应体，保留 ETag 与 `Cache-Control: private, max-age=<ttl>`。
 统计等只需 HTTP 条件响应、无需进程内缓存的端点直接调用 `conditional_response`。
-本切片只提供原语，业务端点在各自切片中接入。
+各业务端点已按上述约定接入；统计只使用条件响应，不复用进程内缓存。
 
 ### 车辆
 
