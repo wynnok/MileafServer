@@ -10,6 +10,7 @@ from uuid import uuid4
 import asyncpg
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from mileaf.app import create_app
 from mileaf.config import Settings
@@ -119,14 +120,17 @@ async def database_dsn(db: asyncpg.Connection, admin_dsn: str) -> AsyncIterator[
 
 
 @pytest.fixture
-async def health_client(
-    db: asyncpg.Connection,
-    database_dsn: str,
-    tmp_path: Path,
-) -> AsyncIterator[httpx.AsyncClient]:
+def app(database_dsn: str, tmp_path: Path) -> FastAPI:
+    application = create_app(
+        Settings(database_dsn=database_dsn, state_file=tmp_path / "state.json")
+    )
+    application.dependency_overrides[get_now] = lambda: FIXED_NOW
+    return application
+
+
+@pytest.fixture
+async def health_client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     """Anonymous HTTP seam against the real seeded PostgreSQL database."""
-    app = create_app(Settings(database_dsn=database_dsn, state_file=tmp_path / "state.json"))
-    app.dependency_overrides[get_now] = lambda: FIXED_NOW
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

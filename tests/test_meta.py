@@ -88,7 +88,14 @@ async def test_credentials_permission_prevents_startup(db, database_dsn, tmp_pat
 def test_capabilities_are_enumerable():
     from mileaf.probes import CAPABILITIES
 
-    assert set(CAPABILITIES) == {"meta"}
+    assert set(CAPABILITIES) == {"meta", "vehicles"}
+    assert set(CAPABILITIES["vehicles"]) == {
+        "cars",
+        "states",
+        "positions",
+        "charging_processes",
+        "settings",
+    }
     assert set(CAPABILITIES["meta"]) == {
         "schema_migrations",
         "settings",

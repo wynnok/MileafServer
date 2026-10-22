@@ -21,8 +21,9 @@ from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
 from mileaf.meta import router as meta_router
 from mileaf.units import initialize_units
+from mileaf.vehicles import router as vehicles_router
 
-ROUTERS = [health_router, auth_router, meta_router]
+ROUTERS = [health_router, auth_router, meta_router, vehicles_router]
 logger = logging.getLogger("mileaf")
 
 
