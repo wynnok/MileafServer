@@ -10,3 +10,4 @@ data/
 /teslamate
 /MileafMobile
 .DS_Store
+.cache/

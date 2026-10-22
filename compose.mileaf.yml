@@ -1,0 +1,15 @@
+# Append this service and named volume to the existing TeslaMate compose file.
+services:
+  mileaf:
+    image: ${MILEAF_IMAGE:-mileaf-server:local}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      MILEAF_DATABASE_DSN: ${MILEAF_DATABASE_DSN:?Set the read-only PostgreSQL DSN}
+      MILEAF_STATE_FILE: /data/state.json
+      MILEAF_LISTEN_ADDRESS: 0.0.0.0:8080
+    volumes:
+      - mileaf-state:/data
+volumes:
+  mileaf-state:
