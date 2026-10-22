@@ -22,10 +22,10 @@
 | 距离 / 能量 / 功率 / 温度 | km / kWh / kW / °C |
 | 电耗 | Wh/km；行程级只有网侧单值 `consumption_wh_km`；统计级区分 `consumption_wh_km_net` 与 `consumption_wh_km_gross` |
 | 时长 | 分钟（整数），字段名 `duration_min` |
-| 分页 | `limit`（默认 20，最大 100）+ `cursor`（不透明串）；响应含 `next_cursor`，`null` 表示到底 |
+| 分页 | `limit`（默认 20，最大 100）+ `cursor`（不透明串）；非法参数返回 400；响应含 `next_cursor`，`null` 表示到底 |
 | 排序 | 默认按 `started_at` 倒序，同时间按 `id` 倒序 |
 | 可空 | TeslaMate 尚未回填的聚合值返回 `null`，不用 0 代替 |
-| 缓存 | 列表与详情返回 `ETag`；`Cache-Control: private, max-age=30`；概览 60 秒 |
+| 缓存 | 列表、详情、统计与概览返回 `ETag` 和 `Cache-Control: private, max-age=30`；内容未变返回 304；概览另有进程内 30 秒 TTL 缓存，统计实时聚合、不做服务端缓存 |
 | 错误 | `{"error": {"code": "...", "message": "..."}}`，`code` 稳定，`message` 可读 |
 | 版本 | `/v1` 内只做加法；破坏性变更开 `/v2` |
 | 服务端超时 | 单查询 `statement_timeout` 5s，超时返回 `503 upstream_timeout` |
@@ -45,14 +45,16 @@
 | POST | `/v1/auth/setup` | 首次初始化，设置访问口令；已初始化返回 `409 already_initialized` |
 | POST | `/v1/auth/login` | 口令换 Bearer token；返回 `token`、`expires_at` |
 | GET | `/v1/health` | 匿名；`{"status":"ok","version":"..."}` |
-| GET | `/v1/meta` | 服务版本、TeslaMate migration 版本、`schema_ok`、单位制、freshness |
+| GET | `/v1/meta` | 服务版本、TeslaMate migration 版本、`schema_ok`、`tested`、单位制固定 `metric`、`source_unit_of_length`、freshness |
+
+token 使用 32 字节密码学随机数的 base64url 编码，TTL 为 30 天，不刷新；过期返回 401。最多保留 10 个 token，超出时淘汰创建时间最早的 token。登录失败按 IP 限制为每分钟 5 次，超出返回 429。状态文件仅保存口令哈希、token 摘要及创建和过期时间，不保存明文 token（见 ADR-0003）。
 
 ### 车辆
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/v1/vehicles` | 车辆列表，含当前状态、电量、续航、freshness |
-| GET | `/v1/vehicles/{id}/summary` | 首页概览聚合（一次请求拿全） |
+| GET | `/v1/vehicles/{id}/summary?tz=<IANA>` | 首页概览聚合；`tz` 默认 `UTC`，非法返回 400；今天与本月按该时区本地日历切分 |
 
 ### 行程
 
@@ -74,9 +76,54 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/v1/vehicles/{id}/stats?kind=driving\|charging&bucket=day\|week\|month\|year&from&to` | 按桶聚合，返回每个桶的指标 |
+| GET | `/v1/vehicles/{id}/stats?kind=driving\|charging&bucket=day\|week\|month\|year&from&to&tz=<IANA>` | 按桶聚合；`tz` 默认 `UTC`，非法返回 400 |
 
 延后屏幕的端点先占位、不实现：`/states`、`/timeline`、`/battery-health`、`/updates`、`/locations`。
+
+## 分页与序列
+
+列表游标为 `base64url("<started_at>|<id>")`，客户端不得解析；非法编码或内容返回 400。按 `(started_at, id)` 倒序，以严格小于游标键的记录继续翻页。`limit` 必须为 1–100，默认 20，超出范围返回 400。
+
+两种序列端点共用两段式降采样：SQL 按时间桶先压到不超过 `4 × points` 行，应用内再用 LTTB 压到不超过 `points` 个点，两段都必须保留原始首尾点。`points` 默认 200、范围 2–1000，超出范围返回 400；最小值为 2，确保多点序列能同时保留首尾。`fields` 按端点白名单校验，未知字段返回 400。原始点数不足时原样返回，不放大。结果按 `t` 升序，采样缺失的字段为 `null`，时间空洞不插值。行程序列始终返回 `lat`/`lon`。
+
+`resolution` 只有两种值：有采样点时为 `server_sampled`，表示序列经服务端采样管线处理，点数少时也可能原样返回；无采样点时为 `empty`，此时 `series: []`，HTTP 200。客户端不得据此推断原始点数。
+
+## 统计桶与时间窗口
+
+统计 `from`/`to` 必填，必须满足 `from < to`，半开区间 `[from, to)` 上限为 730 天；非法或超长区间返回 400。按请求的 IANA 时区用 `date_trunc(bucket, started_at AT TIME ZONE tz) AT TIME ZONE tz` 得到桶起点，周从周一开始。桶边界按本地日历推进，再转回 UTC；夏令时切换日覆盖 23 或 25 小时，不按固定 24 小时截桶。概览的今天与本月使用同一时区规则。
+
+驾驶统计按行程 `started_at` 归桶，充电统计按充电会话 `ended_at` 归桶；只计已结束记录，首尾桶仅统计请求区间内的数据。返回 `buckets` 与 `totals`，空桶补零、无数据时比率为 `null`；总计合并分子分母后计算比率，不平均各桶比率。每种 `kind` 用一条聚合查询完成，不按桶循环查询。
+
+## 单位归一化与口径来源
+
+API 一律返回 km、km/h、kWh、kW、°C、Wh/km。`settings.unit_of_length` 可为 `km` 或 `mi`，是 TeslaMate 的展示偏好，**不是数据库距离与速度列的存储单位**；`/v1/meta.source_unit_of_length` 暴露该设置，非法值拒绝启动。客户端需要英制时自行从 API 公制值换算。
+
+TeslaMate 在写入位置点前就用 `0.62137119223733` 将 Tesla 原始英里与 mph 分别除以该因子，转换为 km 与 km/h。`positions.odometer`、`positions.speed`、由 odometer 首尾差分得到的 `drives.distance`、`drives.speed_max` 均已为公制，不得根据 `unit_of_length=mi` 再除一次。`*_range_km` 恒为 km，`cars.efficiency` 为 kWh/km，温度恒为 °C，同样不重复换算。API 展示精度为距离 1 位小数、速度与电耗取整；聚合使用未舍入值。
+
+来源核验（TeslaMate `v4.3.0`）：[`vehicle.ex` L1754–1760](https://github.com/teslamate-org/teslamate/blob/v4.3.0/elixir/lib/teslamate/vehicles/vehicle.ex#L1754-L1760) 在采集时换算，流式采样在 L1794–1797 同样换算；[`log.ex` L303–305](https://github.com/teslamate-org/teslamate/blob/v4.3.0/elixir/lib/teslamate/log.ex#L303-L305) 从公里 odometer 差分行程距离；[`convert.ex`](https://github.com/teslamate-org/teslamate/blob/v4.3.0/elixir/lib/teslamate/convert.ex) 定义换算因子。本地 `4.4.0-dev`（`6bf3d55e4242cf9c55d1dd334b18e35c9ff59d9f`）亦如此。
+
+工单差异（2026-10-22 维护者确认）：#6、#9、#18 中「距离与速度随 settings 变单位」的假设与上述源码冲突，以源码核实结果为准；B9 的单位入口应保留数据库公制值，英制展示偏好不得触发二次换算。ADR-0002 的「不重算」指不发明新指标口径，必要的真实源单位换算不属于重算。
+
+凡复刻 TeslaMate dashboard 口径的 SQL，必须在 SQL 注释中写明来源面板、公式与所用单位，按语义重写，不直接复制上游 SQL/JSON：
+
+| 口径 | 来源面板与必须注明的规则 |
+|---|---|
+| 行程能量与净电耗 | `drives`：range 差 × efficiency 得到 kWh，再除公制距离 × 1000 得到 Wh/km；注明 preferred range、非正 range 差与缺失效率的 null 规则 |
+| 地点显示名 | `drives`：围栏 → 地址名 → road + house_number → 城市/街区 → null；坐标另行保留 |
+| AC/DC 判定 | `charging-stats`：注明采用的 phases 众数公式、空值规则与适用版本；不得静默把未知值当 AC 或 DC |
+| 毛电耗 | `overview`：区间内充入能量之和 ÷ 行驶里程 × 1000；充电按结束时间、行程按开始时间归期，缺少充入能量或里程为零时为 null |
+
+## TeslaMate 兼容基准与升级
+
+夹具与当前声明的验证基准为已发布的 TeslaMate `v4.3.0`，commit `33d200b2fba9d5138803916a788cef5eae31b1aa`（annotated tag 对象为 `cf1380d3c1a57dc8ee3c204366ea2dd8e3e1902d`），共 105 个 migration，最大版本 `20260808090000`。已知 `tested` 区间当前是单点闭区间 `[20260808090000, 20260808090000]`，不据此宣称验证了中间版本或本地 `4.4.0-dev`。夹具 schema 是 API 所需表的投影，不是完整数据库导出。
+
+`/v1/meta.tested` 仅在 `schema_migrations` 最大版本落在已知区间内且必需结构完整时为 `true`；结构完整但版本在区间外时为 `false`，服务仍启动。缺少必需表/列时拒绝启动并说明缺项，不返回伪造空数据；因此正常提供 meta 时 `schema_ok` 为 `true`。凭据表读取权限探针必须针对该版本实际所在 schema（本基准为 `private.tokens`）检查权限，不读取凭据内容。
+
+schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`、`positions`、`schema_migrations`；元信息与业务切片再校验 `settings`、`drives`、`charging_processes`、`charges`、`addresses`、`geofences`、`updates` 及实际查询引用的列和类型。所需列的真实结构以同基准的夹具 schema 为参照，权限检查独立于业务表投影。
+
+升级支持基准时，必须先核对上游 migration、写入时的单位与 dashboard 口径，再同步更新夹具 schema/种子、schema 快探针的必需表列与权限检查、`tested` 区间及本节版本记录；通过共享原语与 HTTP 契约回归、同区间 Grafana 对账后再扩大验证范围。仅版本号更高不能直接标为 `tested=true`。
+
+已知工单差异：本基准已要求 `charger_phases > 0`（允许 NULL），DC 采样使用 `fast_charger_present=true` 且 phases 为 NULL。#4、#6、#17 的「phases 众数为 0 即 DC」假设不适用于本基准；维护者已确认保留真实 schema 与 DC 数据形状，B8 实施时应相应修正判定并注明来源，不为满足旧假设移除上游约束。
 
 ## 关键响应形状
 
@@ -147,15 +194,7 @@
 | 端点 | p95 目标 | 备注 |
 |---|---|---|
 | `/vehicles` | 200ms | 表极小 |
-| `/summary` | 400ms | 多条子查询，允许 60s 缓存 |
+| `/summary` | 400ms | 多条子查询，进程内 30s TTL 缓存 |
 | 列表类 | 300ms | 强制分页 + 覆盖索引 |
 | 详情类 | 500ms | 单行 + 关联 |
-| `/series` | 600ms | 固定返回 ≤ 200 点，SQL 内降采样 |
-
-## 待定（spec 阶段定）
-
-1. 分页游标编码：不透明 base64 还是 `started_at|id` 明文。
-2. 序列降采样算法：LTTB 还是时间桶均值（影响曲线形状与 SQL 复杂度）。
-3. token 有效期与轮换策略。
-4. 统计的桶边界按 UTC 还是车辆本地时区。
-5. `stats` 是实时聚合还是进程内 60s 缓存。
+| `/series` | 600ms | 默认 ≤ 200 点，最大 1000；SQL 时间桶 + 应用内 LTTB |
