@@ -19,9 +19,10 @@ from mileaf.config import Settings
 from mileaf.database import create_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
-from mileaf.units import load_units
+from mileaf.meta import router as meta_router
+from mileaf.units import initialize_units
 
-ROUTERS = [health_router, auth_router]
+ROUTERS = [health_router, auth_router, meta_router]
 logger = logging.getLogger("mileaf")
 
 
@@ -39,7 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.units_lock = asyncio.Lock()
         try:
             try:
-                app.state.units = await load_units(app.state.pool)
+                await initialize_units(app)
             except (OSError, TimeoutError):
                 logger.warning("Database unavailable at startup; unit validation awaits recovery")
             yield

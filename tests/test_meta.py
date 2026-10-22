@@ -1,0 +1,98 @@
+"""Startup and meta contracts against the fixture database."""
+
+import asyncio
+import os
+import subprocess
+import sys
+
+import httpx
+import pytest
+
+from mileaf.app import create_app
+from mileaf.config import Settings
+
+
+async def test_meta_contract(client):
+    response = await client.get("/v1/meta")
+    assert response.status_code == 200
+    assert response.json() == {
+        "version": "0.1.0",
+        "teslamate_schema_version": 20260808090000,
+        "schema_ok": True,
+        "tested": True,
+        "units": "metric",
+        "source_unit_of_length": "km",
+        "freshness": {
+            "last_position_at": "2026-03-15T11:55:00Z",
+            "last_state_at": "2026-03-14T23:00:00Z",
+        },
+    }
+    assert (await client.get("/v1/meta", headers={"Authorization": ""})).status_code == 401
+
+
+async def test_unknown_version_still_starts(db, database_dsn, tmp_path):
+    await db.execute(
+        "UPDATE schema_migrations SET version=99999999999999 WHERE version=20260808090000"
+    )
+    app = create_app(Settings(database_dsn=database_dsn, state_file=tmp_path / "state.json"))
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+    ):
+        await client.post("/v1/auth/setup", json={"password": "fixture password"})
+        token = (await client.post("/v1/auth/login", json={"password": "fixture password"})).json()[
+            "token"
+        ]
+        response = await client.get("/v1/meta", headers={"Authorization": "Bearer " + token})
+        assert response.status_code == 200
+        assert response.json()["tested"] is False
+        assert response.json()["teslamate_schema_version"] == 99999999999999
+
+
+@pytest.mark.parametrize(
+    "mutation,missing",
+    [
+        ("ALTER TABLE positions RENAME TO missing_positions", "positions"),
+        ("ALTER TABLE cars RENAME COLUMN id TO missing_id", "cars.id"),
+        ("ALTER TABLE positions ALTER COLUMN date TYPE text", "positions.date"),
+    ],
+)
+async def test_startup_schema_failures(db, database_dsn, tmp_path, mutation, missing):
+    await db.execute(mutation)
+    result = await asyncio.to_thread(
+        subprocess.run,
+        [sys.executable, "-m", "mileaf"],
+        env={
+            **os.environ,
+            "MILEAF_DATABASE_DSN": database_dsn,
+            "MILEAF_STATE_FILE": str(tmp_path / "state.json"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode != 0
+    assert missing in result.stderr
+    assert "Restore" in result.stderr
+
+
+async def test_credentials_permission_prevents_startup(db, database_dsn, tmp_path):
+    role = database_dsn.split("//")[1].split("@")[0]
+    await db.execute(f'GRANT SELECT ON private.tokens TO "{role}"')
+    app = create_app(Settings(database_dsn=database_dsn, state_file=tmp_path / "state.json"))
+    with pytest.raises(RuntimeError, match=r"REVOKE SELECT ON TABLE private\.tokens"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("credential access must prevent startup")
+
+
+def test_capabilities_are_enumerable():
+    from mileaf.probes import CAPABILITIES
+
+    assert set(CAPABILITIES) == {"meta"}
+    assert set(CAPABILITIES["meta"]) == {
+        "schema_migrations",
+        "settings",
+        "positions",
+        "states",
+        "cars",
+    }

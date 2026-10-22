@@ -5,7 +5,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 import asyncpg
-from fastapi import Request
+from fastapi import FastAPI, Request
+
+from mileaf.probes import probe_database
 
 Number = Decimal | int | float
 
@@ -22,14 +24,18 @@ async def load_units(pool: asyncpg.Pool) -> UnitSettings:
     return UnitSettings(source_unit_of_length=rows[0][0])
 
 
+async def initialize_units(app: FastAPI) -> UnitSettings:
+    # Recovery must validate schema and credentials before serving metric data.
+    if app.state.units is None:
+        async with app.state.units_lock:
+            if app.state.units is None:
+                app.state.compatibility = await probe_database(app.state.pool)
+                app.state.units = await load_units(app.state.pool)
+    return app.state.units
+
+
 async def get_units(request: Request) -> UnitSettings:
-    # A temporarily unreachable DB retains the runtime's anonymous health behavior.
-    # The first recovered request validates settings before serving any metric data.
-    if request.app.state.units is None:
-        async with request.app.state.units_lock:
-            if request.app.state.units is None:
-                request.app.state.units = await load_units(request.app.state.pool)
-    return request.app.state.units
+    return await initialize_units(request.app)
 
 
 def rounded_decimal(value: Number | None, *, places: Literal[0, 1]) -> Decimal | None:

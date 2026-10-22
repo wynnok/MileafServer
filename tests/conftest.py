@@ -72,7 +72,7 @@ async def _connect(dsn: str) -> asyncpg.Connection:
 
 
 @pytest.fixture
-async def database_dsn(postgres_container: str) -> AsyncIterator[str]:
+async def admin_dsn(postgres_container: str) -> AsyncIterator[str]:
     """Function-isolated admin database. Runtime applies its own read-only protection."""
     database_name = f"mileaf_test_{uuid4().hex}"
     admin = await _connect(postgres_container)
@@ -87,8 +87,8 @@ async def database_dsn(postgres_container: str) -> AsyncIterator[str]:
 
 
 @pytest.fixture
-async def db(database_dsn: str) -> AsyncIterator[asyncpg.Connection]:
-    connection = await _connect(database_dsn)
+async def db(admin_dsn: str) -> AsyncIterator[asyncpg.Connection]:
+    connection = await _connect(admin_dsn)
     try:
         await connection.execute((FIXTURE_ROOT / "schema.sql").read_text())
         versions = [
@@ -102,6 +102,20 @@ async def db(database_dsn: str) -> AsyncIterator[asyncpg.Connection]:
         yield connection
     finally:
         await connection.close()
+
+
+@pytest.fixture
+async def database_dsn(db: asyncpg.Connection, admin_dsn: str) -> AsyncIterator[str]:
+    """A real non-owner reader, with no access to the credential schema."""
+    role = f"reader_{uuid4().hex}"
+    await db.execute(f'CREATE ROLE "{role}" LOGIN')
+    try:
+        await db.execute(f'GRANT USAGE ON SCHEMA public TO "{role}"')
+        await db.execute(f'GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{role}"')
+        yield admin_dsn.replace("postgres@", role + "@")
+    finally:
+        await db.execute(f'DROP OWNED BY "{role}"')
+        await db.execute(f'DROP ROLE "{role}"')
 
 
 @pytest.fixture
