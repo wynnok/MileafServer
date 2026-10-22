@@ -59,3 +59,8 @@ def consumption_wh_km(value: Number | None) -> Decimal | None:
 def metric_sql(expression: str, *, places: Literal[0, 1]) -> str:
     """Round a trusted SQL expression at the DTO boundary, never before aggregation."""
     return f"round(({expression})::numeric, {places})"
+
+
+def distance_km_sql(expression: str) -> str:
+    """Normalize a stored metric distance without rounding before aggregation (B9)."""
+    return f"({expression})::numeric"
