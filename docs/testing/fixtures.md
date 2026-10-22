@@ -32,7 +32,7 @@ docker pull postgres:16-alpine
 UV_CACHE_DIR=.cache/uv uv run pytest tests/test_fixtures.py
 ```
 
-测试使用预拉取的 `postgres:16-alpine`；启动参数固定 `--pull=never`，不会自动拉镜像，也不运行需要联网下载 sidecar 的容器清理器。session 启一个 PostgreSQL 容器，仅向 `127.0.0.1` 发布随机端口；每个 function 创建独立数据库，结束时删除，session 结束停止容器。容器只含合成数据，使用本机回环端口与 PostgreSQL trust 认证。`database_dsn` 是夹具管理员连接，`db` 加载 schema 与种子；应用仍通过自身连接层设置只读事务。无 Docker 或无镜像时，只有依赖 PostgreSQL 的测试跳过，纯单元测试照常运行。
+测试使用预拉取的 `postgres:16-alpine`；启动参数固定 `--pull=never`，不会自动拉镜像，也不运行需要联网下载 sidecar 的容器清理器。session 启一个 PostgreSQL 容器，仅向 `127.0.0.1` 发布随机端口；每个 function 创建独立数据库，结束时删除，session 结束停止容器。容器只含合成数据，使用本机回环端口与 PostgreSQL trust 认证。`admin_dsn` 是夹具管理员连接，`db` 用它加载 schema 与种子；`database_dsn` 使用独立的非 owner 只读角色，仅可读取 public schema 的表，不能读取 `private.tokens`。应用仍通过自身连接层设置只读事务。无 Docker 或无镜像时，只有依赖 PostgreSQL 的测试跳过，纯单元测试照常运行。
 
 每个域的 `seed(db)` 可以在依赖域已加载后独立重放：车辆与状态 → 围栏与地址 → 行程与位置 → 充电 → 固件。显式主键与 `ON CONFLICT DO NOTHING` 保证对未修改的基础数据重复加载不增行；重放不承担修复测试主动改坏的数据的职责。每条测试由新数据库恢复基础数据。
 
