@@ -154,6 +154,10 @@ async def client(health_client: httpx.AsyncClient) -> httpx.AsyncClient:
 
 
 @pytest.fixture
-def performance_seed() -> None:
-    """E1 (#27) owns the optional large-data generator; never load it by default."""
-    pytest.skip("Performance seed generator awaits E1 (#27), behind the slow marker")
+async def performance_seed(request: pytest.FixtureRequest, db: asyncpg.Connection) -> int:
+    """Import and load large data only for explicitly selected slow tests."""
+    if request.node.get_closest_marker("slow") is None:
+        raise pytest.UsageError("performance_seed requires the slow marker")
+    from tests.fixtures.performance import load_performance_seed
+
+    return await load_performance_seed(db)
