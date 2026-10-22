@@ -66,7 +66,9 @@ def location_sql(*, position: str = "p", address: str = "a", geofence: str = "g"
     )
 
 
-async def fetch_locations(db: asyncpg.Connection, refs: list[LocationRef]) -> list[Location]:
+async def fetch_locations(
+    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy, refs: list[LocationRef]
+) -> list[Location]:
     """One SELECT for a page's start/end or session references, preserving order and duplicates."""
     if not refs:
         return []

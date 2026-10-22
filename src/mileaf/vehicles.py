@@ -77,6 +77,9 @@ async def get_vehicle_or_404(
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
     units: Annotated[UnitSettings, Depends(get_units)],
 ) -> VehicleIdentity:
+    # cars.id is int2: out-of-range IDs are absent, not upstream failures.
+    if vehicle_id > 32767:
+        raise APIError(404, ErrorCode.NOT_FOUND, "Resource not found")
     row = await pool.fetchrow(
         "SELECT id, name, model, right(vin,4) AS vin_suffix FROM cars WHERE id=$1", vehicle_id
     )

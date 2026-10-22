@@ -45,7 +45,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, int]:
 
 
 async def fetch_page(
-    db: asyncpg.Connection,
+    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy,
     *,
     source: str,
     args: tuple[object, ...] = (),

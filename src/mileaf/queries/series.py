@@ -71,7 +71,7 @@ def lttb(rows: list[dict[str, Any]], points: int, fields: tuple[str, ...]) -> li
 
 
 async def fetch_series(
-    db: asyncpg.Connection,
+    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy,
     *,
     table: str,
     time_column: str,

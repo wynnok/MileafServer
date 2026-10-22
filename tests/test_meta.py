@@ -99,6 +99,9 @@ def test_capabilities_are_enumerable():
         "charging_classification",
         "locations",
         "statistics",
+        "drive_details",
+        "charging_session_details",
+        "summary",
     }
     assert set(CAPABILITIES["vehicles"]) == {
         "cars",

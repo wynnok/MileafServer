@@ -15,8 +15,10 @@ from starlette.exceptions import HTTPException
 from mileaf.auth import AuthStore, require_bearer
 from mileaf.auth import router as auth_router
 from mileaf.cache import TTLCache
+from mileaf.charging_sessions import router as charging_sessions_router
 from mileaf.config import Settings
 from mileaf.database import create_pool
+from mileaf.drives import router as drives_router
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
 from mileaf.meta import router as meta_router
@@ -24,10 +26,20 @@ from mileaf.queries import charging as charging  # Register shared AC/DC require
 from mileaf.queries import energy as energy  # Register shared drive-energy requirements.
 from mileaf.queries import locations as locations  # Register shared location requirements.
 from mileaf.stats import router as stats_router
+from mileaf.summary import router as summary_router
 from mileaf.units import initialize_units
 from mileaf.vehicles import router as vehicles_router
 
-ROUTERS = [health_router, auth_router, meta_router, vehicles_router, stats_router]
+ROUTERS = [
+    health_router,
+    auth_router,
+    meta_router,
+    vehicles_router,
+    stats_router,
+    drives_router,
+    charging_sessions_router,
+    summary_router,
+]
 logger = logging.getLogger("mileaf")
 
 

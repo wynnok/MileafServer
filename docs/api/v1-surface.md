@@ -102,9 +102,24 @@ ETag 哈希覆盖已序列化 JSON、路径与完整查询串；支持 `If-None-
 
 列表游标为 `base64url("<started_at>|<id>")`，客户端不得解析；非法编码或内容返回 400。按 `(started_at, id)` 倒序，以严格小于游标键的记录继续翻页。`limit` 必须为 1–100，默认 20，超出范围返回 400。
 
+行程与充电会话列表响应为 `{"items": [...], "next_cursor": null}`。`from` / `to`
+均可省略，省略的一侧不限制时间；提供时必须带时区，且同时提供时必须满足 `from < to`。
+列表按开始时间筛选，进行中的记录也可返回；其结束时间、最终时长、最终电量为 null，
+进行中行程的距离、能量、电耗也为 null，充电会话的能量保留当前累计值。
+
 两种序列端点共用两段式降采样：SQL 按时间桶先压到不超过 `4 × points` 行，应用内再用 LTTB 压到不超过 `points` 个点，两段都必须保留原始首尾点。`points` 默认 200、范围 2–1000，超出范围返回 400；最小值为 2，确保多点序列能同时保留首尾。`fields` 按端点白名单校验，未知字段返回 400。原始点数不足时原样返回，不放大。结果按 `t` 升序，采样缺失的字段为 `null`，时间空洞不插值。行程序列始终返回 `lat`/`lon`。
 
 `resolution` 只有两种值：有采样点时为 `server_sampled`，表示序列经服务端采样管线处理，点数少时也可能原样返回；无采样点时为 `empty`，此时 `series: []`，HTTP 200。客户端不得据此推断原始点数。
+
+行程 `fields` 默认 `speed`，可选 `speed,battery,elevation`，点字段分别为
+`speed_kmh`、`battery_level`、`elevation_m`；每点始终含 `t`、`lat`、`lon`。
+充电会话 `fields` 默认 `power,soc`，点字段同名，单位为 kW 和百分比。
+未请求的可选点字段不返回，请求的缺失值返回 null。序列顶层含 `drive_id` 或
+`session_id`、`resolution`、`points`（实际返回点数）与 `series`。
+
+充电会话详情的 `energy_added_kwh` 是电池充入能量，`energy_used_kwh` 是电网侧消耗，
+两者均保留上游 null；不返回币种。`charger_phases_mode` 是非 null 相数的众数，
+无有效相数时为 null；`is_dc` 复用上述 AC/DC 口径。
 
 ## 统计桶与时间窗口
 
@@ -153,6 +168,7 @@ schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`�
   "state": {"value": "online", "since": "2026-10-21T12:00:00Z"},
   "battery": {"level": 78, "range_km": 412, "range_kind": "rated"},
   "odometer_km": 42123,
+  "charging_power_kw": null,
   "period": {
     "today": {"drives": 2, "distance_km": 34.2, "energy_kwh": 5.6},
     "month": {"drives": 18, "distance_km": 412.3, "energy_kwh": 68.1}
