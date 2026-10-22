@@ -22,7 +22,9 @@ async def create_pool(settings: Settings) -> asyncpg.Pool:
     )
 
 
-async def fetch_rows(db: asyncpg.Connection, query: str, *args: object) -> list[asyncpg.Record]:
+async def fetch_rows(
+    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy, query: str, *args: object
+) -> list[asyncpg.Record]:
     """Bound each primitive query, including connections supplied outside the runtime pool."""
     try:
         async with db.transaction(readonly=True):

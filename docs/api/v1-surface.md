@@ -253,3 +253,17 @@ schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`�
 `LocationRef(position_id, address_id, geofence_id)` 合并为一次查询，并按输入顺序
 返回 `Location`，重复引用不丢失。`address` 为地址自身的回退显示名，`geofence`
 为围栏名；`display_name` 优先围栏。空白名称按缺失处理，坐标只来自位置点。
+
+### 统计骨架阶段（C4）
+
+`driving` 固定键：`drives`、`distance_km`、`energy_kwh`、`consumption_wh_km_net`、
+`consumption_wh_km_gross`、`speed_max_kmh`。`charging` 固定键：`sessions`、
+`energy_added_kwh`、`cost`、`cost_per_kwh`、`ac_energy_kwh`、`dc_energy_kwh`、
+`dc_energy_share`。桶除这些键外含 UTC `bucket_start`；totals 不含时间键。
+
+当前只实现已结束行程数、未舍入距离聚合（输出按公制精度舍入）及已结束充电会话数，
+其余键在非空与空桶中都为 `null`，不伪造未交付的指标；已实现的可加指标在空桶补零。
+D1/D2 填充后沿用这些键名。`GROUPING SETS` 在同一查询内计算各桶与区间总计；
+`mileaf.stats.ratio_sql(numerator=..., denominator=...)` 对可加分子、分母先求和再相除，
+分母为零或缺失时为 null，供 D2 接入费用及能量占比，禁止对桶比率求平均。
+统计每次从数据库聚合，仅使用 HTTP 条件响应，固定 `private, max-age=30`。

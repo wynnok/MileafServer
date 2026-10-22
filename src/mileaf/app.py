@@ -23,10 +23,11 @@ from mileaf.meta import router as meta_router
 from mileaf.queries import charging as charging  # Register shared AC/DC requirements.
 from mileaf.queries import energy as energy  # Register shared drive-energy requirements.
 from mileaf.queries import locations as locations  # Register shared location requirements.
+from mileaf.stats import router as stats_router
 from mileaf.units import initialize_units
 from mileaf.vehicles import router as vehicles_router
 
-ROUTERS = [health_router, auth_router, meta_router, vehicles_router]
+ROUTERS = [health_router, auth_router, meta_router, vehicles_router, stats_router]
 logger = logging.getLogger("mileaf")
 
 
