@@ -55,6 +55,10 @@ async def test_unknown_version_still_starts(db, database_dsn, tmp_path):
         ("ALTER TABLE positions RENAME TO missing_positions", "positions"),
         ("ALTER TABLE cars RENAME COLUMN id TO missing_id", "cars.id"),
         ("ALTER TABLE positions ALTER COLUMN date TYPE text", "positions.date"),
+        (
+            "ALTER TABLE charges RENAME COLUMN charger_phases TO missing_phases",
+            "charges.charger_phases",
+        ),
     ],
 )
 async def test_startup_schema_failures(db, database_dsn, tmp_path, mutation, missing):
@@ -88,7 +92,7 @@ async def test_credentials_permission_prevents_startup(db, database_dsn, tmp_pat
 def test_capabilities_are_enumerable():
     from mileaf.probes import CAPABILITIES
 
-    assert set(CAPABILITIES) == {"meta", "vehicles", "drive_energy"}
+    assert set(CAPABILITIES) == {"meta", "vehicles", "drive_energy", "charging_classification"}
     assert set(CAPABILITIES["vehicles"]) == {
         "cars",
         "states",

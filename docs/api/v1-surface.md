@@ -216,3 +216,33 @@ schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`�
 | 列表类 | 300ms | 强制分页 + 覆盖索引 |
 | 详情类 | 500ms | 单行 + 关联 |
 | `/series` | 600ms | 默认 ≤ 200 点，最大 1000；SQL 时间桶 + 应用内 LTTB |
+
+## 分页、序列与充电分类原语接入
+
+这些原语只提供查询能力，业务端点在各自切片接入。调用方从连接池获取连接；
+所有 SQL 表名、表达式、过滤条件和输出列名必须是开发者常量，请求值通过 `args`
+绑定，不能拼进 SQL。调用方为实际使用的业务列注册 schema capability。
+原语查询在只读事务内设置局部 `statement_timeout=5s`，同时设置驱动超时；
+超时抛出 `APIError(503, upstream_timeout)`，事务结束恢复连接设置。
+
+- `mileaf.queries.pagination.fetch_page` 接收输出 `id` 与 UTC `started_at` 的
+  `source` SELECT、其 `args`，以及 `limit`、`cursor`、可选的 `from_`/`to`。
+  TeslaMate 的无时区列须用 `start_date AT TIME ZONE 'UTC'` 转换。
+  返回 `Page(rows, next_cursor)`；原语负责多取一行判断是否到底并编码游标。
+- `mileaf.queries.series.fetch_series` 接收 `table`、`time_column`、字段白名单
+  `columns`（输出名到数值 SQL 表达式的映射）、`where` 与 `args`，以及
+  `fields`、`points`。源表须有唯一 `id`；时间列为 TeslaMate 的 UTC 无时区列。
+  `fields` 缺省选择映射中的所有字段，端点负责传入其约定的默认值。
+  行程端点传 `required_fields=("lat", "lon")` 保证坐标始终存在。
+  SQL 每个时间桶保留首尾及首个请求字段的最小/最大原始点，总量不超过
+  `4 × points`；随后 LTTB 对各字段归一化后的三角面积求和选点，返回
+  `Series(series, resolution)`。空值不贡献面积，输出仍保留原始 NULL。
+  该方法保留首尾与曲线形状，不保证每个字段的所有局部极值都被保留。
+- `mileaf.queries.charging.is_dc_sql(session="cp")` 可嵌入列表或分桶查询；
+  `charging_energy` 按车辆和可选 UTC `[from_, to)` 结束时间区间，一次聚合
+  已完成会话，返回 `ac_energy`、`dc_energy`、`unknown_energy`、`total_energy`。
+  能量统一取 `charge_energy_added`（kWh，与 #5 的充入能量一致），不取面板
+  electricity usage 的 `greatest(added, used)`。未知分类不并入 AC/DC。
+  分类沿用 v4.3.0 charging-stats 的非空相数众数；全 NULL 为 DC，完全无采样
+  为未知。`fast_charger_present` 不覆盖该面板规则；相数众数并列时 PostgreSQL
+  按升序取首个值，在当前正相数约束下不影响 AC/DC 分类。
