@@ -1,4 +1,4 @@
-"""Calendar statistics skeleton; D1/D2 fill the reserved metric fields."""
+"""Calendar statistics aggregated in PostgreSQL before presentation rounding."""
 
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -17,8 +17,10 @@ from mileaf.database import fetch_rows
 from mileaf.dependencies import get_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.probes import CAPABILITIES
+from mileaf.queries.charging import is_dc_sql
+from mileaf.queries.energy import energy_kwh_sql
 from mileaf.queries.time import Bucket, bucket_sql, validate_timezone
-from mileaf.units import distance_km, distance_km_sql
+from mileaf.units import consumption_wh_km, distance_km, distance_km_sql, speed_kmh
 from mileaf.vehicles import VehicleIdentity, get_vehicle_or_404
 
 CAPABILITIES["statistics"] = {
@@ -27,8 +29,14 @@ CAPABILITIES["statistics"] = {
         "start_date": ("timestamp",),
         "end_date": ("timestamp",),
         "distance": ("float8",),
+        "speed_max": ("int2",),
     },
-    "charging_processes": {"car_id": ("int2",), "end_date": ("timestamp",)},
+    "charging_processes": {
+        "car_id": ("int2",),
+        "end_date": ("timestamp",),
+        "charge_energy_added": ("numeric",),
+        "cost": ("numeric",),
+    },
 }
 
 
@@ -53,20 +61,20 @@ router = APIRouter(prefix="/v1", tags=["statistics"], route_class=StatisticsRout
 class DrivingMetrics(BaseModel):
     drives: int
     distance_km: float
-    energy_kwh: float | None = None
-    consumption_wh_km_net: float | None = None
-    consumption_wh_km_gross: float | None = None
-    speed_max_kmh: float | None = None
+    energy_kwh: float | None
+    consumption_wh_km_net: float | None
+    consumption_wh_km_gross: float | None
+    speed_max_kmh: float | None
 
 
 class ChargingMetrics(BaseModel):
     sessions: int
-    energy_added_kwh: float | None = None
-    cost: float | None = None
-    cost_per_kwh: float | None = None
-    ac_energy_kwh: float | None = None
-    dc_energy_kwh: float | None = None
-    dc_energy_share: float | None = None
+    energy_added_kwh: float
+    cost: float | None
+    cost_per_kwh: float | None
+    ac_energy_kwh: float
+    dc_energy_kwh: float
+    dc_energy_share: float | None
 
 
 class DrivingBucket(DrivingMetrics):
@@ -124,11 +132,7 @@ def stats_parameters(
 
 
 def ratio_sql(*, numerator: str, denominator: str) -> str:
-    """Trusted additive SQL terms: combine first, divide once for each grouping set.
-
-    D2 can use this for cost_per_kwh and dc_energy_share. Missing/zero denominator
-    produces NULL; integer terms are promoted to numeric before division.
-    """
+    """Combine trusted additive terms before dividing; missing/zero divisor => NULL."""
     return f"(sum({numerator}))::numeric / nullif(sum({denominator}), 0)"
 
 
@@ -140,65 +144,113 @@ async def statistics(
     params: Annotated[StatsParameters, Depends(stats_parameters)],
 ) -> Response:
     driving = params.kind == "driving"
-    table = "drives" if driving else "charging_processes"
-    time_column = "start_date" if driving else "end_date"
-    bucket = bucket_sql(params.bucket, timestamp=f"{time_column} AT TIME ZONE 'UTC'", tz="$4")
-    # GROUPING SETS calculates bucket values and totals from the same filtered rows;
-    # future ratios must use ratio_sql so totals never average bucket ratios.
-    distance = f", coalesce(sum({distance_km_sql('distance')}),0) AS distance_km" if driving else ""
-    count_name = "drives" if driving else "sessions"
+    drive_bucket = bucket_sql(params.bucket, timestamp="d.start_date AT TIME ZONE 'UTC'", tz="$4")
+    charge_bucket = bucket_sql(params.bucket, timestamp="cp.end_date AT TIME ZONE 'UTC'", tz="$4")
+    if driving:
+        # Union contributions before grouping: joining drives to sessions would multiply
+        # both energies. A charging-only bucket must still contribute to gross totals.
+        source = (
+            "/* TeslaMate v4.3.0 drives / overview, independently rewritten: finished "
+            "drives by start_date; preferred range delta * efficiency -> net kWh "
+            "(non-positive delta/missing efficiency => NULL); sum kWh / sum km * 1000 "
+            "-> net Wh/km. Overview gross uses finished charge_energy_added by end_date "
+            "/ driving km * 1000; no charging energy or zero km => NULL. "
+            "Stored distance/speed are km/km/h regardless of display preference. */ "
+            f"SELECT {drive_bucket} AS bucket_start, 1 AS drives, "
+            f"{distance_km_sql('d.distance')} AS distance_km, {energy_kwh_sql()} AS energy_kwh, "
+            "d.speed_max AS speed_max_kmh, NULL::numeric AS gross_energy_kwh "
+            "FROM drives d JOIN cars c ON c.id=d.car_id CROSS JOIN settings s "
+            "WHERE d.car_id=$1 AND d.end_date IS NOT NULL "
+            "AND d.start_date AT TIME ZONE 'UTC' >= $2::timestamptz "
+            "AND d.start_date AT TIME ZONE 'UTC' < $3::timestamptz UNION ALL "
+            f"SELECT {charge_bucket}, 0, NULL, NULL, NULL, cp.charge_energy_added "
+            "FROM charging_processes cp WHERE cp.car_id=$1 AND cp.end_date IS NOT NULL "
+            "AND cp.end_date AT TIME ZONE 'UTC' >= $2::timestamptz "
+            "AND cp.end_date AT TIME ZONE 'UTC' < $3::timestamptz"
+        )
+        metrics = {
+            "drives": "coalesce(sum(drives),0)",
+            "distance_km": "coalesce(sum(distance_km),0)",
+            "energy_kwh": "CASE WHEN coalesce(sum(drives),0)=0 THEN 0 ELSE sum(energy_kwh) END",
+            "consumption_wh_km_net": ratio_sql(numerator="energy_kwh", denominator="distance_km")
+            + " * 1000",
+            "consumption_wh_km_gross": ratio_sql(
+                numerator="nullif(gross_energy_kwh,0)", denominator="distance_km"
+            )
+            + " * 1000",
+            "speed_max_kmh": "max(speed_max_kmh)",
+        }
+        zero_metrics = {"drives", "distance_km", "energy_kwh"}
+    else:
+        source = (
+            "/* TeslaMate v4.3.0 charging-stats semantics, independently rewritten: "
+            "finished sessions by end_date; sum charge_energy_added (kWh, per Mileaf #5), "
+            "sum known cost; cost / energy of only cost-known sessions. Free sessions "
+            "participate; unknown costs do not. AC/DC uses shared phases mode, "
+            "unknown classifications stay in total energy only. DC share = DC / (AC+DC); "
+            "ratios use merged sums and NULL for a zero denominator. */ "
+            f"SELECT {charge_bucket} AS bucket_start, cp.charge_energy_added AS energy, "
+            f"cp.cost, {is_dc_sql()} AS is_dc FROM charging_processes cp "
+            "WHERE cp.car_id=$1 AND cp.end_date IS NOT NULL "
+            "AND cp.end_date AT TIME ZONE 'UTC' >= $2::timestamptz "
+            "AND cp.end_date AT TIME ZONE 'UTC' < $3::timestamptz"
+        )
+        metrics = {
+            "sessions": "count(*)",
+            "energy_added_kwh": "coalesce(sum(energy),0)",
+            "cost": "CASE WHEN count(*)=0 THEN 0 ELSE sum(cost) END",
+            "cost_per_kwh": ratio_sql(
+                numerator="cost", denominator="CASE WHEN cost IS NOT NULL THEN energy END"
+            ),
+            "ac_energy_kwh": "coalesce(sum(energy) FILTER (WHERE is_dc IS FALSE),0)",
+            "dc_energy_kwh": "coalesce(sum(energy) FILTER (WHERE is_dc IS TRUE),0)",
+            "dc_energy_share": ratio_sql(
+                numerator="CASE WHEN is_dc IS TRUE THEN energy ELSE 0 END",
+                denominator="CASE WHEN is_dc IS NOT NULL THEN energy END",
+            ),
+        }
+        zero_metrics = {"sessions", "energy_added_kwh", "cost", "ac_energy_kwh", "dc_energy_kwh"}
+    # GROUPING SETS applies the same formulas to buckets and the full window.
+    aggregates = ", ".join(f"{expression} AS {name}" for name, expression in metrics.items())
+    projected = ", ".join(
+        f"CASE WHEN a.bucket_start IS NULL THEN 0 ELSE a.{name} END AS {name}"
+        if name in zero_metrics
+        else f"a.{name}"
+        for name in metrics
+    )
     query = (
-        "/* TeslaMate v4.3.0 drive-stats / charging-stats semantics, independently rewritten: "
-        "count finished records; sum stored driving distance (km). Drives use start time, "
-        "charging sessions use end time; UTC [from,to), local calendar buckets. */ "
-        f"WITH source AS (SELECT {bucket} AS bucket_start"
-        + (", distance" if driving else "")
-        + f" FROM {table} WHERE car_id=$1 AND end_date IS NOT NULL "
-        f"AND {time_column} AT TIME ZONE 'UTC' >= $2::timestamptz "
-        f"AND {time_column} AT TIME ZONE 'UTC' < $3::timestamptz), "
-        f"aggregated AS (SELECT bucket_start, grouping(bucket_start)=1 AS is_total, "
-        f"count(*) AS {count_name}{distance} "
+        f"WITH source AS ({source}), "
+        f"aggregated AS (SELECT bucket_start, grouping(bucket_start)=1 AS is_total, {aggregates} "
         "FROM source GROUP BY GROUPING SETS ((bucket_start), ())), "
         "calendar AS (SELECT local_start AT TIME ZONE $4 AS bucket_start FROM generate_series("
         f"date_trunc('{params.bucket}', $2::timestamptz AT TIME ZONE $4), "
         f"date_trunc('{params.bucket}', $3::timestamptz AT TIME ZONE $4), "
         f"interval '1 {params.bucket}') AS local_start "
         "WHERE local_start AT TIME ZONE $4 < $3::timestamptz) "
-        f"SELECT c.bucket_start, false AS is_total, coalesce(a.{count_name},0) AS {count_name}"
-        + (", coalesce(a.distance_km,0) AS distance_km" if driving else "")
-        + " FROM calendar c LEFT JOIN aggregated a "
+        f"SELECT c.bucket_start, false AS is_total, {projected} "
+        "FROM calendar c LEFT JOIN aggregated a "
         "ON a.bucket_start=c.bucket_start AND NOT a.is_total UNION ALL "
-        f"SELECT bucket_start, is_total, {count_name}"
-        + (", distance_km" if driving else "")
-        + " FROM aggregated WHERE is_total ORDER BY is_total, bucket_start"
+        f"SELECT bucket_start, is_total, {', '.join(metrics)} "
+        "FROM aggregated WHERE is_total ORDER BY is_total, bucket_start"
     )
     async with pool.acquire() as connection:
         rows = await fetch_rows(connection, query, vehicle.id, params.from_, params.to, params.tz)
     if driving:
+        driving_rows = []
+        for row in rows:
+            data = dict(row)
+            data["distance_km"] = distance_km(data["distance_km"])
+            data["speed_max_kmh"] = speed_kmh(data["speed_max_kmh"])
+            for name in ("consumption_wh_km_net", "consumption_wh_km_gross"):
+                data[name] = consumption_wh_km(data[name])
+            driving_rows.append(data)
         result: DrivingStats | ChargingStats = DrivingStats(
-            buckets=[
-                DrivingBucket(
-                    bucket_start=row["bucket_start"],
-                    drives=row["drives"],
-                    distance_km=distance_km(row["distance_km"]),
-                )
-                for row in rows
-                if not row["is_total"]
-            ],
-            totals=DrivingMetrics(
-                drives=rows[-1]["drives"], distance_km=distance_km(rows[-1]["distance_km"])
-            ),
+            buckets=[DrivingBucket(**row) for row in driving_rows if not row["is_total"]],
+            totals=DrivingMetrics(**driving_rows[-1]),
         )
     else:
         result = ChargingStats(
-            buckets=[
-                ChargingBucket(
-                    bucket_start=row["bucket_start"],
-                    sessions=row["sessions"],
-                )
-                for row in rows
-                if not row["is_total"]
-            ],
-            totals=ChargingMetrics(sessions=rows[-1]["sessions"]),
+            buckets=[ChargingBucket(**dict(row)) for row in rows if not row["is_total"]],
+            totals=ChargingMetrics(**dict(rows[-1])),
         )
     return conditional_response(request, result.model_dump_json().encode(), ttl=30)

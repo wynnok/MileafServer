@@ -270,16 +270,47 @@ schema 快探针清单随实现切片扩充：骨架切片需 `cars`、`states`�
 返回 `Location`，重复引用不丢失。`address` 为地址自身的回退显示名，`geofence`
 为围栏名；`display_name` 优先围栏。空白名称按缺失处理，坐标只来自位置点。
 
-### 统计骨架阶段（C4）
+### 驾驶与充电统计（C4、D1、D2）
 
 `driving` 固定键：`drives`、`distance_km`、`energy_kwh`、`consumption_wh_km_net`、
 `consumption_wh_km_gross`、`speed_max_kmh`。`charging` 固定键：`sessions`、
 `energy_added_kwh`、`cost`、`cost_per_kwh`、`ac_energy_kwh`、`dc_energy_kwh`、
 `dc_energy_share`。桶除这些键外含 UTC `bucket_start`；totals 不含时间键。
 
-当前只实现已结束行程数、未舍入距离聚合（输出按公制精度舍入）及已结束充电会话数，
-其余键在非空与空桶中都为 `null`，不伪造未交付的指标；已实现的可加指标在空桶补零。
-D1/D2 填充后沿用这些键名。`GROUPING SETS` 在同一查询内计算各桶与区间总计；
+驾驶按已结束行程的 `start_date` 归桶，`drives` 与 `distance_km` 包含所有已结束行程。
+`energy_kwh` 逐行程复用 preferred range 差 × efficiency 的推导后求和，跳过未知值；
+因此 range 差非正或效率缺失的行程仍计入次数与里程，但不贡献能量，净电耗的分母仍是全部里程。
+非空桶中全部行程的能量未知时，`energy_kwh` 与 `consumption_wh_km_net` 均为 `null`；
+没有行程时能量为 0。净电耗为 `sum(energy_kwh) / sum(distance_km) × 1000`，
+里程为零时为 `null`。`speed_max_kmh` 为各行程最高速度的最大值，无已知速度时为 `null`。
+
+毛电耗沿用 overview：已结束充电会话的 `charge_energy_added` 按 `end_date` 归桶，
+除以同桶驾驶里程再乘 1000。充电与行程的归期不同，必须保留 `_gross` 标识；
+无充电能量（包括合计为零）或无里程时为 `null`。仅有充电的桶仍纳入区间毛电耗的分子。
+
+充电按已结束会话的 `end_date` 归桶，`energy_added_kwh` 合计 `charge_energy_added`。
+`cost` 只合计已知费用；明确免费（0）参与合计，非空桶中全部费用未知时为 `null`。
+`cost_per_kwh` 为已知费用合计除以**费用已知会话的能量合计**，不把未知费用会话的能量
+放进分母；分母为零时为 `null`。费用与单价不做币种换算。
+AC/DC 分类复用上面的 phases 众数规则；未知分类只计入次数与总能量。
+`dc_energy_share` 为 `dc_energy_kwh / (ac_energy_kwh + dc_energy_kwh)`，分母为零时为 `null`。
+所有计数、里程与能量、费用在空桶和空区间总计中补 0，比率与最高速度为 `null`。
+
+`GROUPING SETS` 在同一查询内计算各桶与区间总计；
 `mileaf.stats.ratio_sql(numerator=..., denominator=...)` 对可加分子、分母先求和再相除，
-分母为零或缺失时为 null，供 D2 接入费用及能量占比，禁止对桶比率求平均。
+分母为零或缺失时为 null，禁止对桶比率求平均；最高速度合并取最大值。
+距离、速度与电耗仅在响应前按公制精度舍入，聚合与比率均使用未舍入值。
 统计每次从数据库聚合，仅使用 HTTP 条件响应，固定 `private, max-age=30`。
+
+固定夹具的三个月驾驶净电耗手算（`rated`、efficiency = 0.15 kWh/km）：
+
+| 月份 | 已结束行程数 | 里程 km | 能量 kWh | 净电耗 Wh/km（展示取整） |
+|---|---:|---:|---:|---:|
+| 2026-01 | 31 | 620 | `31 × (350−325) × 0.15 = 116.25` | `116.25 / 620 × 1000 = 187.5 → 188` |
+| 2026-02 | 7 | 140 | `7 × 25 × 0.15 = 26.25` | `26.25 / 140 × 1000 = 187.5 → 188` |
+| 2026-03 | 11 | 200 | `10 × 25 × 0.15 = 37.5` | `37.5 / 200 × 1000 = 187.5 → 188` |
+| totals | 49 | 960 | 180 | `180 / 960 × 1000 = 187.5 → 188` |
+
+三月有一条非正 range 差行程（只贡献次数与里程），另有一条零里程行程（贡献次数与能量）。
+充电夹具总能量 160 kWh，其中 AC 120、DC 20、未知 20；费用 72，费用已知能量 140 kWh，
+总单价 `72 / 140`，DC 占比 `20 / 140 = 1/7`，不等于三个月占比 `(0 + 0.5 + 0) / 3 = 1/6`。
