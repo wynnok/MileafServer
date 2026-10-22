@@ -125,8 +125,14 @@ async def health_client(
 
 @pytest.fixture
 async def client(health_client: httpx.AsyncClient) -> httpx.AsyncClient:
-    """B2 replaces this explicit placeholder with setup/login and a valid Bearer token."""
-    pytest.skip("Authenticated client awaits B2 (#11); use health_client for anonymous health")
+    """Authenticate through the real setup/login boundary, without bypassing Bearer checks."""
+    password = "fixture access password"
+    setup = await health_client.post("/v1/auth/setup", json={"password": password})
+    assert setup.status_code == 200
+    login = await health_client.post("/v1/auth/login", json={"password": password})
+    assert login.status_code == 200
+    health_client.headers["Authorization"] = "Bearer " + login.json()["token"]
+    return health_client
 
 
 @pytest.fixture

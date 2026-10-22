@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     listen_address: str = "0.0.0.0:8080"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     max_concurrency: int = Field(default=4, ge=1)
-    cache_ttl_seconds: int = Field(default=60, ge=0)
+    cache_ttl_seconds: int = Field(default=30, ge=0)
+    cache_capacity: int = Field(default=256, ge=1)
 
     @field_validator("database_dsn")
     @classmethod

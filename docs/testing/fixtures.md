@@ -38,7 +38,7 @@ UV_CACHE_DIR=.cache/uv uv run pytest tests/test_fixtures.py
 
 需要局部特殊车辆时使用 `tests.fixtures.seeds.vehicles.seed_car(db, efficiency=None, unit_of_length="mi")`；它增加车辆并设置站点的展示单位，不改变里程或速度的存储单位，也不修改基础种子文件。该测试结束即丢弃整个数据库。
 
-`health_client` 通过真实应用 lifespan 与 HTTPX ASGI transport 访问夹具数据库，依赖覆盖 `get_now` 固定为 `2026-03-15T12:00:00Z`。`client` 是明确的鉴权占位：在 B2（#11）落地前请求它会 skip，不会伪造合法 token 或绕过认证。B2 应将它替换为 setup/login 后自动携带 Bearer token 的客户端。
+`health_client` 通过真实应用 lifespan 与 HTTPX ASGI transport 访问夹具数据库，依赖覆盖 `get_now` 固定为 `2026-03-15T12:00:00Z`。`client` 通过真实 setup/login 获取 token 并自动携带 Bearer 头，不伪造 token 或绕过认证。
 
 `slow` marker 已注册；`performance_seed` 是 E1（#27）的空挂载点，当前使用会 skip，默认不生成压测数据。
 

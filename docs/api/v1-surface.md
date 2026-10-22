@@ -49,6 +49,24 @@
 
 token 使用 32 字节密码学随机数的 base64url 编码，TTL 为 30 天，不刷新；过期返回 401。最多保留 10 个 token，超出时淘汰创建时间最早的 token。登录失败按 IP 限制为每分钟 5 次，超出返回 429。状态文件仅保存口令哈希、token 摘要及创建和过期时间，不保存明文 token（见 ADR-0003）。
 
+setup/login 的 JSON 请求体为 `{"password":"YOUR_ACCESS_PASSWORD"}`。setup 成功返回
+`{"status":"ok"}`；不足 10 字符返回 `400 invalid_request`。缺失、错误或过期 Bearer
+及错误口令统一返回 `401 unauthorized`，限流返回 `429 rate_limited`。
+
+### 缓存原语接入
+
+业务端点通过 `get_cache` 获取应用级 `TTLCache`，给 `cached_response` 传入完整缓存键、
+生成 JSON **字节**的异步 `render` 和端点 TTL。键必须含资源类型、车辆、时区、时间范围、
+分页及其他影响响应的参数；`freshness` 在生成响应时取数据时间，命中时复用原字节。
+TTL 使用单调时钟，默认 30 秒；容量默认 256 条，满时淘汰最久未使用的键。
+`MILEAF_CACHE_TTL_SECONDS=0` 关闭进程内缓存，不改变序列化和 ETag 算法。
+命中/未命中通过缓存对象的 `hits`/`misses` 计数观察，不放进响应体。
+
+ETag 哈希覆盖已序列化 JSON、路径与完整查询串；支持 `If-None-Match` 的列表、弱比较
+和通配符。304 不带响应体，保留 ETag 与 `Cache-Control: private, max-age=<ttl>`。
+统计等只需 HTTP 条件响应、无需进程内缓存的端点直接调用 `conditional_response`。
+本切片只提供原语，业务端点在各自切片中接入。
+
 ### 车辆
 
 | 方法 | 路径 | 说明 |

@@ -1,22 +1,27 @@
 """Application factory and the sole route registration list."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import asyncpg
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 
+from mileaf.auth import AuthStore, require_bearer
+from mileaf.auth import router as auth_router
+from mileaf.cache import TTLCache
 from mileaf.config import Settings
 from mileaf.database import create_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
+from mileaf.units import load_units
 
-ROUTERS = [health_router]
+ROUTERS = [health_router, auth_router]
 logger = logging.getLogger("mileaf")
 
 
@@ -30,13 +35,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.pool = await create_pool(configuration)
+        app.state.units = None
+        app.state.units_lock = asyncio.Lock()
         try:
+            try:
+                app.state.units = await load_units(app.state.pool)
+            except (OSError, TimeoutError):
+                logger.warning("Database unavailable at startup; unit validation awaits recovery")
             yield
         finally:
             await app.state.pool.close()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_bearer)])
     app.state.settings = configuration
+    app.state.auth_store = AuthStore(configuration.state_file)
+    app.state.cache = TTLCache(
+        ttl=configuration.cache_ttl_seconds, capacity=configuration.cache_capacity
+    )
     for router in ROUTERS:
         app.include_router(router)
 

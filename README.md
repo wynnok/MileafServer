@@ -9,7 +9,27 @@ TeslaMate 数据的只读 API 层，供 Mileaf Mobile 调用。运行环境为 P
 `GET /v1/health` 匿名检查数据库连接，数据库不可达时返回 503。
 
 数据库应使用只读专用角色，连接池会额外设置只读事务与查询超时。
-当前只提供运行时骨架，不包含认证或业务端点。
+当前提供健康检查、单站点认证，以及供后续业务端点使用的单位与缓存原语。
+
+首次调用 `POST /v1/auth/setup`，JSON 请求体为 `{"password":"YOUR_ACCESS_PASSWORD"}`，
+口令至少 10 字符；随后用相同请求体调用 `POST /v1/auth/login` 获取 `token` 与
+`expires_at`。其余 API 请求携带 `Authorization: Bearer <token>`；健康检查与认证
+接口匿名。token 有效期为 30 天，最多保留 10 个。同一来源 IP 每分钟最多允许
+5 次失败登录；反向代理应正确传递受信任的客户端地址。
+
+`MILEAF_STATE_FILE` 指向挂载卷中的 `state.json`，以 `0600` 权限保存 Argon2id
+口令哈希及 token 摘要。写入采用同目录 `O_EXCL` 临时文件和原子 rename；同目录的
+空 `state.json.lock` 用于跨进程互斥，避免并发初始化或登录覆盖状态。业务数据不落盘。
+重置口令需停止所有实例后删除 `state.json`，再启动并重新 setup；全部旧 token 随之失效。
+
+启动时读取并校验 `settings.unit_of_length`，缓存到当前连接池生命周期；修改展示设置
+后需重启服务。数据库暂不可达时，健康检查仍可返回 503，恢复后的首次单位读取必须
+完成同一校验。距离和速度列已为公制，`mi` 展示偏好不会触发二次换算，详见
+[接口口径](docs/api/v1-surface.md#单位归一化与口径来源)。
+
+进程内缓存默认 TTL 为 30 秒、容量为 256 条，可通过 `MILEAF_CACHE_TTL_SECONDS`
+与 `MILEAF_CACHE_CAPACITY` 配置；TTL 设为 0 关闭服务端缓存。缓存命中不改写
+`freshness`。各业务端点后续独立接入，并声明自身的缓存策略。
 
 ## 验证
 

@@ -10,7 +10,7 @@ from mileaf.errors import APIError, ErrorCode
 router = APIRouter(prefix="/v1")
 
 
-@router.get("/health")
+@router.get("/health", openapi_extra={"security": [{}]})
 async def health(pool: Annotated[asyncpg.Pool, Depends(get_pool)]) -> dict[str, str]:
     try:
         connection = await pool.acquire(timeout=5)

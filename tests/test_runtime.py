@@ -50,13 +50,15 @@ async def test_reachable_database_is_healthy(health_client: httpx.AsyncClient) -
     assert response.json() == {"status": "ok", "version": "0.1.0"}
 
 
-async def test_pool_connections_reject_writes_after_reuse(database_dsn: str, db) -> None:
+async def test_pool_connections_reject_writes_after_reuse(database_dsn: str, db, tmp_path) -> None:
     import asyncpg
     from fastapi import Depends
 
     from mileaf.dependencies import get_pool
 
-    app = create_app(Settings(database_dsn=database_dsn, max_concurrency=1))
+    app = create_app(
+        Settings(database_dsn=database_dsn, max_concurrency=1, state_file=tmp_path / "state.json")
+    )
 
     # The HTTP probe uses the same dependency seam as every production route.
     @app.post("/write-probe")
@@ -72,6 +74,9 @@ async def test_pool_connections_reject_writes_after_reuse(database_dsn: str, db)
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
     ):
+        await client.post("/v1/auth/setup", json={"password": "a long password"})
+        login = await client.post("/v1/auth/login", json={"password": "a long password"})
+        client.headers["Authorization"] = "Bearer " + login.json()["token"]
         assert (await client.post("/write-probe")).json() == {"status": "read_only"}
         assert (await client.post("/write-probe")).json() == {"status": "read_only"}
 

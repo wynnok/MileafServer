@@ -9,6 +9,9 @@ class ErrorCode(StrEnum):
     INVALID_REQUEST = "invalid_request"
     NOT_FOUND = "not_found"
     INTERNAL_ERROR = "internal_error"
+    UNAUTHORIZED = "unauthorized"
+    ALREADY_INITIALIZED = "already_initialized"
+    RATE_LIMITED = "rate_limited"
 
 
 class APIError(Exception):
