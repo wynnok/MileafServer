@@ -1,0 +1,21 @@
+services:
+  mileaf:
+    image: ${MILEAF_IMAGE:-mileaf-server:local}
+    build: .
+    restart: unless-stopped
+    environment:
+      MILEAF_DATABASE_DSN: ${MILEAF_DATABASE_DSN:?Set the read-only PostgreSQL DSN}
+      MILEAF_STATE_FILE: /data/state.json
+      MILEAF_LISTEN_ADDRESS: 0.0.0.0:8080
+      FORWARDED_ALLOW_IPS: ${MILEAF_TRUSTED_PROXY_IP:-127.0.0.1}
+    volumes:
+      - mileaf-state:/data
+    networks:
+      - docker_bridge_net
+
+volumes:
+  mileaf-state:
+
+networks:
+  docker_bridge_net:
+    external: true

@@ -113,6 +113,17 @@ location / {
 Mileaf 不负责证书、反向代理、Tailscale 安装或隧道。若 TLS 代理运行在另一个容器，
 通过共享网络转发 `http://mileaf:8080`，无需额外向公网发布该端口。
 
+### 独立 compose 与现有 Nginx 共享网络
+
+仓库根目录的 `docker-compose.yml` 适用于已创建 `docker_bridge_net` 的服务器。
+将代码放入 `/root/apps/dockerApps/mileaf-server`，在该目录的 `.env` 中设置
+`MILEAF_DATABASE_DSN` 和 `MILEAF_TRUSTED_PROXY_IP`（Nginx 在共享网络上的 IP），
+并将 `.env` 权限设为 `0600`。执行 `docker compose up -d --build --wait`。
+该配置不发布宿主机端口，Nginx 应通过 `http://mileaf:8080` 代理。
+`MILEAF_TRUSTED_PROXY_IP` 仅用于 Uvicorn 信任该代理传入的客户端 IP；Nginx 应将
+`X-Forwarded-For` 覆盖为 `$remote_addr`，Nginx 容器 IP 改变后需同步更新并重建 Mileaf。
+首次部署应先在容器网络内完成访问口令初始化，再启用公网代理，避免初始化接口被抢先调用。
+
 ## 5. 完整环境变量
 
 与 `mileaf.config.Settings` 对应，不新增运行期配置：

@@ -11,3 +11,4 @@ data/
 /MileafMobile
 .DS_Store
 .cache/
+*_ssh-private-key
