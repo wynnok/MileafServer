@@ -18,7 +18,7 @@ from mileaf.units import UnitSettings, distance_km, get_units
 CAPABILITIES["vehicles"] = {
     "cars": {
         "id": ("int2",),
-        "name": ("varchar",),
+        "name": ("varchar", "text"),
         "model": ("varchar",),
         "vin": ("text",),
         "inserted_at": ("timestamp",),

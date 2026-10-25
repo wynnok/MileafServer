@@ -49,11 +49,29 @@ async def test_unknown_version_still_starts(db, database_dsn, tmp_path):
         assert response.json()["teslamate_schema_version"] == 99999999999999
 
 
+async def test_text_vehicle_name_starts_and_is_readable(db, database_dsn, tmp_path):
+    await db.execute("ALTER TABLE cars ALTER COLUMN name TYPE text")
+    expected_name = await db.fetchval("SELECT name FROM cars ORDER BY inserted_at, id LIMIT 1")
+    app = create_app(Settings(database_dsn=database_dsn, state_file=tmp_path / "state.json"))
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+    ):
+        await client.post("/v1/auth/setup", json={"password": "fixture password"})
+        token = (await client.post("/v1/auth/login", json={"password": "fixture password"})).json()[
+            "token"
+        ]
+        response = await client.get("/v1/vehicles", headers={"Authorization": "Bearer " + token})
+        assert response.status_code == 200
+        assert response.json()[0]["name"] == expected_name
+
+
 @pytest.mark.parametrize(
     "mutation,missing",
     [
         ("ALTER TABLE positions RENAME TO missing_positions", "positions"),
         ("ALTER TABLE cars RENAME COLUMN id TO missing_id", "cars.id"),
+        ("ALTER TABLE cars ALTER COLUMN name TYPE integer USING NULL", "cars.name"),
         ("ALTER TABLE positions ALTER COLUMN date TYPE text", "positions.date"),
         (
             "ALTER TABLE charges RENAME COLUMN charger_phases TO missing_phases",
