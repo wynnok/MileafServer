@@ -425,7 +425,6 @@ def _build_windows(
     prefix_max: list[datetime] = []
     for value in effective_end:
         prefix_max.append(value if not prefix_max else max(prefix_max[-1], value))
-    calendar_index = {start: start for start in params.calendar}
     built: list[_Built] = []
 
     def emit(item: ParkingWindow) -> None:
@@ -433,7 +432,7 @@ def _build_windows(
         built.append(
             _Built(
                 item=item,
-                bucket_start=calendar_index.get(bucket_start, bucket_start),
+                bucket_start=bucket_start,
                 tiebreak=(
                     item.start_event.type,
                     item.start_event.id,
