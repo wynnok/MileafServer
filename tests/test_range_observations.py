@@ -432,6 +432,8 @@ async def test_candidates_without_any_valid_point_are_insufficient_data(client, 
     assert february["coverage"]["valid_days"] == 0
     assert february["coverage"]["excluded_by_reason"] == {"soc_out_of_range": 2}
     assert body["totals"]["status"] == "insufficient_data"
+    assert body["totals"]["coverage"]["excluded_points"] == 2
+    assert body["totals"]["coverage"]["excluded_by_reason"] == {"soc_out_of_range": 2}
     assert body["first_observed_at"] is None
 
 

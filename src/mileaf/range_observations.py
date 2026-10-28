@@ -43,12 +43,16 @@ router = APIRouter(prefix="/v1", tags=["statistics"], route_class=ResourceRoute)
 
 ExclusionReason = Literal["missing_soc", "soc_out_of_range", "invalid_rated_range"]
 Quality = Literal["available", "no_records", "insufficient_data", "unsupported"]
+SampleStatus = Literal["adequate", "sparse", "insufficient_data"]
+MINIMUM_VALID_DAYS = 3
 
 
 class RangeThresholds(BaseModel):
     soc_min: int = Field(20, description="Inclusive lower battery_level bound, percent")
     soc_max: int = Field(90, description="Inclusive upper battery_level bound, percent")
-    minimum_valid_days: int = Field(3, description="Valid days per month before sparse")
+    minimum_valid_days: int = Field(
+        MINIMUM_VALID_DAYS, description="Valid days per month before sparse"
+    )
     validation: Literal["provisional"] = "provisional"
 
 
@@ -66,7 +70,7 @@ class RangeCoverage(BaseModel):
 
 class RangeSummary(BaseModel):
     status: Quality = Field(description="unsupported wins over data volume; see #34 §2")
-    sample_status: Literal["adequate", "sparse", "insufficient_data"] = Field(
+    sample_status: SampleStatus = Field(
         "insufficient_data", description="sparse below three valid days"
     )
     median_range_km: float | None = Field(
@@ -287,13 +291,15 @@ def summary(observed: dict[str, object] | None, *, supported: bool) -> RangeSumm
         status = "insufficient_data"
     else:
         status = "available"
+    if status != "available":
+        sample_status: SampleStatus = "insufficient_data"
+    elif coverage.valid_days >= MINIMUM_VALID_DAYS:
+        sample_status = "adequate"
+    else:
+        sample_status = "sparse"
     return RangeSummary(
         status=status,
-        sample_status="adequate"
-        if coverage.valid_days >= RangeThresholds().minimum_valid_days
-        else "sparse"
-        if status == "available"
-        else "insufficient_data",
+        sample_status=sample_status,
         median_range_km=distance_km(numeric(observed, "median_km")),
         p10_range_km=distance_km(numeric(observed, "p10_km")),
         p90_range_km=distance_km(numeric(observed, "p90_km")),
