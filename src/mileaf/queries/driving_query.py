@@ -65,6 +65,34 @@ class DrivingQuery:
         ).hexdigest()
 
 
+def driving_filters(
+    distance_min_km: float | None = None,
+    distance_max_km: float | None = None,
+    outside_temp_min_c: float | None = None,
+    outside_temp_max_c: float | None = None,
+    energy_status: Literal["known", "unknown"] | None = None,
+    completed_only: bool = False,
+) -> DrivingFilters:
+    """One validation for every route that accepts the shared driving filters."""
+    values = (distance_min_km, distance_max_km, outside_temp_min_c, outside_temp_max_c)
+    if any(value is not None and not isfinite(value) for value in values):
+        raise APIError(400, ErrorCode.INVALID_REQUEST, "Driving filter bounds must be finite")
+    for lower, upper in (
+        (distance_min_km, distance_max_km),
+        (outside_temp_min_c, outside_temp_max_c),
+    ):
+        if lower is not None and upper is not None and lower >= upper:
+            raise APIError(400, ErrorCode.INVALID_REQUEST, "Invalid driving filter range")
+    return DrivingFilters(
+        distance_min_km=distance_min_km,
+        distance_max_km=distance_max_km,
+        outside_temp_min_c=outside_temp_min_c,
+        outside_temp_max_c=outside_temp_max_c,
+        energy_status=energy_status,
+        completed_only=completed_only,
+    )
+
+
 def driving_parameters(
     request: Request,
     now: Annotated[datetime, Depends(get_now)],
@@ -82,19 +110,10 @@ def driving_parameters(
     limit: str = "20",
 ) -> DrivingQuery:
     bounds = list_parameters(from_, to, limit=limit)
-    values = (distance_min_km, distance_max_km, outside_temp_min_c, outside_temp_max_c)
-    if any(value is not None and not isfinite(value) for value in values):
-        raise APIError(400, ErrorCode.INVALID_REQUEST, "Driving filter bounds must be finite")
-    for lower, upper in (
-        (distance_min_km, distance_max_km),
-        (outside_temp_min_c, outside_temp_max_c),
-    ):
-        if lower is not None and upper is not None and lower >= upper:
-            raise APIError(400, ErrorCode.INVALID_REQUEST, "Invalid driving filter range")
     end = min(bounds.to, now) if bounds.to is not None else None
     if bounds.from_ is not None and end is not None and bounds.from_ >= end:
         raise APIError(400, ErrorCode.INVALID_REQUEST, "Invalid effective driving time range")
-    filters = DrivingFilters(
+    filters = driving_filters(
         distance_min_km=distance_min_km,
         distance_max_km=distance_max_km,
         outside_temp_min_c=outside_temp_min_c,
