@@ -42,6 +42,28 @@
         "title": "Battery",
         "type": "object"
       },
+      "BoundaryEvent": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "drive",
+              "charging_session"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "BoundaryEvent",
+        "type": "object"
+      },
       "ChargePoint": {
         "properties": {
           "actual_current_a": {
@@ -2072,6 +2094,52 @@
         "title": "DrivingStats",
         "type": "object"
       },
+      "ExcludedByReason": {
+        "properties": {
+          "ambiguous_states": {
+            "default": 0,
+            "title": "Ambiguous States",
+            "type": "integer"
+          },
+          "event_overlap": {
+            "default": 0,
+            "title": "Event Overlap",
+            "type": "integer"
+          },
+          "insufficient_duration": {
+            "default": 0,
+            "title": "Insufficient Duration",
+            "type": "integer"
+          },
+          "invalid_time_order": {
+            "default": 0,
+            "title": "Invalid Time Order",
+            "type": "integer"
+          },
+          "missing_odometer": {
+            "default": 0,
+            "title": "Missing Odometer",
+            "type": "integer"
+          },
+          "missing_soc": {
+            "default": 0,
+            "title": "Missing Soc",
+            "type": "integer"
+          },
+          "odometer_change": {
+            "default": 0,
+            "title": "Odometer Change",
+            "type": "integer"
+          },
+          "same_moment_gap": {
+            "default": 0,
+            "title": "Same Moment Gap",
+            "type": "integer"
+          }
+        },
+        "title": "ExcludedByReason",
+        "type": "object"
+      },
       "Firmware": {
         "properties": {
           "installed_at": {
@@ -2378,6 +2446,702 @@
           "freshness"
         ],
         "title": "Meta",
+        "type": "object"
+      },
+      "ParkingAggregate": {
+        "properties": {
+          "asleep_hours": {
+            "default": 0.0,
+            "title": "Asleep Hours",
+            "type": "number"
+          },
+          "asleep_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asleep Share"
+          },
+          "candidate_windows": {
+            "default": 0,
+            "title": "Candidate Windows",
+            "type": "integer"
+          },
+          "excluded_by_reason": {
+            "$ref": "#/components/schemas/ExcludedByReason"
+          },
+          "excluded_windows": {
+            "default": 0,
+            "title": "Excluded Windows",
+            "type": "integer"
+          },
+          "observed_hours": {
+            "default": 0.0,
+            "title": "Observed Hours",
+            "type": "number"
+          },
+          "offline_hours": {
+            "default": 0.0,
+            "title": "Offline Hours",
+            "type": "number"
+          },
+          "offline_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offline Share"
+          },
+          "online_hours": {
+            "default": 0.0,
+            "title": "Online Hours",
+            "type": "number"
+          },
+          "online_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Online Share"
+          },
+          "open_windows": {
+            "default": 0,
+            "title": "Open Windows",
+            "type": "integer"
+          },
+          "soc_change_pp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp"
+          },
+          "soc_change_pp_per_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp Per 24H"
+          },
+          "unknown_hours": {
+            "default": 0.0,
+            "title": "Unknown Hours",
+            "type": "number"
+          },
+          "unknown_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Share"
+          },
+          "valid_windows": {
+            "default": 0,
+            "title": "Valid Windows",
+            "type": "integer"
+          }
+        },
+        "title": "ParkingAggregate",
+        "type": "object"
+      },
+      "ParkingBucket": {
+        "properties": {
+          "asleep_hours": {
+            "default": 0.0,
+            "title": "Asleep Hours",
+            "type": "number"
+          },
+          "asleep_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asleep Share"
+          },
+          "bucket_start": {
+            "format": "date-time",
+            "title": "Bucket Start",
+            "type": "string"
+          },
+          "candidate_windows": {
+            "default": 0,
+            "title": "Candidate Windows",
+            "type": "integer"
+          },
+          "excluded_by_reason": {
+            "$ref": "#/components/schemas/ExcludedByReason"
+          },
+          "excluded_windows": {
+            "default": 0,
+            "title": "Excluded Windows",
+            "type": "integer"
+          },
+          "observed_hours": {
+            "default": 0.0,
+            "title": "Observed Hours",
+            "type": "number"
+          },
+          "offline_hours": {
+            "default": 0.0,
+            "title": "Offline Hours",
+            "type": "number"
+          },
+          "offline_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offline Share"
+          },
+          "online_hours": {
+            "default": 0.0,
+            "title": "Online Hours",
+            "type": "number"
+          },
+          "online_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Online Share"
+          },
+          "open_windows": {
+            "default": 0,
+            "title": "Open Windows",
+            "type": "integer"
+          },
+          "soc_change_pp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp"
+          },
+          "soc_change_pp_per_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp Per 24H"
+          },
+          "unknown_hours": {
+            "default": 0.0,
+            "title": "Unknown Hours",
+            "type": "number"
+          },
+          "unknown_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Share"
+          },
+          "valid_windows": {
+            "default": 0,
+            "title": "Valid Windows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket_start"
+        ],
+        "title": "ParkingBucket",
+        "type": "object"
+      },
+      "ParkingEndpoint": {
+        "properties": {
+          "odometer_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Km"
+          },
+          "odometer_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "drive_start_position",
+                  "drive_end_position",
+                  "charging_start_position",
+                  "charging_end_position"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Source"
+          },
+          "position_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Id"
+          },
+          "rated_range_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rated Range Km"
+          },
+          "raw_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Time"
+          },
+          "soc": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc"
+          },
+          "soc_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "drive_start_position",
+                  "drive_end_position",
+                  "charging_start_battery_level",
+                  "charging_end_battery_level"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Source"
+          }
+        },
+        "title": "ParkingEndpoint",
+        "type": "object"
+      },
+      "ParkingFilters": {
+        "description": "ST08 takes no evidence filters; echoed as an explicit empty object.",
+        "properties": {},
+        "title": "ParkingFilters",
+        "type": "object"
+      },
+      "ParkingObservations": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/ParkingBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ParkingWindow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "matched_windows": {
+            "title": "Matched Windows",
+            "type": "integer"
+          },
+          "method": {
+            "const": "closed-window-soc-v1",
+            "default": "closed-window-soc-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ParkingQueryEcho"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/ParkingThresholds"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ParkingAggregate"
+          },
+          "validation": {
+            "const": "provisional",
+            "default": "provisional",
+            "title": "Validation",
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "query",
+          "as_of",
+          "totals",
+          "buckets",
+          "items",
+          "matched_windows",
+          "next_cursor"
+        ],
+        "title": "ParkingObservations",
+        "type": "object"
+      },
+      "ParkingQueryEcho": {
+        "properties": {
+          "bucket": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Bucket",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ParkingFilters"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "time_basis": {
+            "const": "window_start",
+            "default": "window_start",
+            "title": "Time Basis",
+            "type": "string"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "vehicle_id": {
+            "title": "Vehicle Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "from",
+          "to",
+          "tz",
+          "bucket"
+        ],
+        "title": "ParkingQueryEcho",
+        "type": "object"
+      },
+      "ParkingThresholds": {
+        "properties": {
+          "endpoint_rule": {
+            "const": "exact_event_boundary_position",
+            "default": "exact_event_boundary_position",
+            "title": "Endpoint Rule",
+            "type": "string"
+          },
+          "max_abs_odometer_change_km": {
+            "default": 1.0,
+            "title": "Max Abs Odometer Change Km",
+            "type": "number"
+          },
+          "min_duration_hours": {
+            "default": 1.0,
+            "title": "Min Duration Hours",
+            "type": "number"
+          },
+          "odometer_change_bound": {
+            "const": "exclusive",
+            "default": "exclusive",
+            "title": "Odometer Change Bound",
+            "type": "string"
+          },
+          "soc_max_pp": {
+            "default": 100,
+            "title": "Soc Max Pp",
+            "type": "integer"
+          },
+          "soc_min_pp": {
+            "default": 0,
+            "title": "Soc Min Pp",
+            "type": "integer"
+          },
+          "state_rule": {
+            "const": "closed_segment_intersection_open_unknown",
+            "default": "closed_segment_intersection_open_unknown",
+            "title": "State Rule",
+            "type": "string"
+          }
+        },
+        "title": "ParkingThresholds",
+        "type": "object"
+      },
+      "ParkingWindow": {
+        "properties": {
+          "asleep_hours": {
+            "title": "Asleep Hours",
+            "type": "number"
+          },
+          "duration_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Hours"
+          },
+          "end": {
+            "$ref": "#/components/schemas/ParkingEndpoint"
+          },
+          "end_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundaryEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "same_moment_gap",
+                  "invalid_time_order",
+                  "event_overlap",
+                  "ambiguous_states",
+                  "missing_soc",
+                  "missing_odometer",
+                  "odometer_change",
+                  "insufficient_duration"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "negative_odometer_change": {
+            "title": "Negative Odometer Change",
+            "type": "boolean"
+          },
+          "odometer_change_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Change Km"
+          },
+          "offline_hours": {
+            "title": "Offline Hours",
+            "type": "number"
+          },
+          "online_hours": {
+            "title": "Online Hours",
+            "type": "number"
+          },
+          "quality": {
+            "enum": [
+              "complete",
+              "partial_state_coverage",
+              "open_window",
+              "excluded"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "soc_change_pp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp"
+          },
+          "soc_change_pp_per_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soc Change Pp Per 24H"
+          },
+          "start": {
+            "$ref": "#/components/schemas/ParkingEndpoint"
+          },
+          "start_event": {
+            "$ref": "#/components/schemas/BoundaryEvent"
+          },
+          "unknown_hours": {
+            "title": "Unknown Hours",
+            "type": "number"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_id": {
+            "title": "Window Id",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_id",
+          "start_event",
+          "end_event",
+          "window_start",
+          "window_end",
+          "duration_hours",
+          "start",
+          "end",
+          "soc_change_pp",
+          "soc_change_pp_per_24h",
+          "odometer_change_km",
+          "negative_odometer_change",
+          "online_hours",
+          "asleep_hours",
+          "offline_hours",
+          "unknown_hours",
+          "quality",
+          "exclusion_reason",
+          "included"
+        ],
+        "title": "ParkingWindow",
         "type": "object"
       },
       "PeriodMetrics": {
@@ -4006,6 +4770,123 @@
         "summary": "Drive List",
         "tags": [
           "drives"
+        ]
+      }
+    },
+    "/v1/vehicles/{vehicle_id}/parking-observations": {
+      "get": {
+        "operationId": "parking_observations_v1_vehicles__vehicle_id__parking_observations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Vehicle Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "title": "Tz",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": "50",
+              "title": "Limit",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParkingObservations"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Parking Observations",
+        "tags": [
+          "parking observations"
         ]
       }
     },
