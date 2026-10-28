@@ -20,6 +20,7 @@ async def test_meta_contract(client):
     assert all(body["charging_experience"]["fields"].values())
     assert body["statistics_insights"]["contract_version"] == "statistics-insights-v1"
     assert body["statistics_insights"]["minimum_server_version"] == "0.3.0"
+    assert body["statistics_insights"]["features"]["driving_coverage"] is True
     assert {
         key: value
         for key, value in body.items()

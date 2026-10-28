@@ -37,6 +37,9 @@ async def test_monthly_counts_totals_and_conditional_response(client):
         "consumption_wh_km_net",
         "consumption_wh_km_gross",
         "speed_max_kmh",
+        "driving_coverage",
+        "net_consumption_paired",
+        "comparison_quality",
     }
     # Jan: 31 * (350-325) * .15 = 116.25 kWh / 620 km.
     # Feb: 7 * 3.75 = 26.25 kWh / 140 km.
@@ -119,8 +122,11 @@ async def test_driving_zero_distance_and_missing_energy(
         "consumption_wh_km_gross": gross,
         "speed_max_kmh": 90 if drives else None,
     }
-    assert response.json()["totals"] == expected
-    assert response.json()["buckets"] == [{"bucket_start": f"2026-03-{day}T00:00:00Z", **expected}]
+    assert {key: response.json()["totals"][key] for key in expected} == expected
+    assert len(response.json()["buckets"]) == 1
+    bucket = response.json()["buckets"][0]
+    assert {key: bucket[key] for key in expected} == expected
+    assert bucket["bucket_start"] == f"2026-03-{day}T00:00:00Z"
 
 
 async def test_driving_totals_merge_raw_metrics_and_keep_metric_units(client, db):
@@ -131,7 +137,7 @@ async def test_driving_totals_merge_raw_metrics_and_keep_metric_units(client, db
     assert [b["consumption_wh_km_net"] for b in body["buckets"]] == [182, 188, 188]
     assert [b["speed_max_kmh"] for b in body["buckets"]] == [110, 90, 90]
     # 180 / 980 * 1000 = 183.673..., not the mean of the monthly rates.
-    assert body["totals"] == {
+    expected = {
         "drives": 49,
         "distance_km": 980,
         "energy_kwh": 180,
@@ -139,6 +145,7 @@ async def test_driving_totals_merge_raw_metrics_and_keep_metric_units(client, db
         "consumption_wh_km_gross": 163,
         "speed_max_kmh": 110,
     }
+    assert {key: body["totals"][key] for key in expected} == expected
 
 
 async def test_charging_metrics_exclude_unknown_cost_from_both_ratio_terms(client):
@@ -268,9 +275,8 @@ async def test_ongoing_charging_excluded_at_fixed_now(client):
 
 
 async def test_driving_preferred_range_missing_efficiency_and_summary_agree(client, db, app):
-    from tests.conftest import FIXED_NOW
-
-    app.dependency_overrides[get_now] = lambda: FIXED_NOW
+    # Historical March records are complete before the current-clock upper bound.
+    app.dependency_overrides[get_now] = lambda: datetime(2026, 3, 31, 12, tzinfo=UTC)
     response = await client.get(BASE, params=WINDOW)
     summary = (await client.get("/v1/vehicles/1/summary")).json()
     march = response.json()["buckets"][2]
@@ -352,7 +358,7 @@ async def test_invalid_parameters_return_400(client, change):
     assert response.json()["error"]["code"] == "invalid_request"
 
 
-async def test_one_aggregate_query_and_no_server_cache(app, client, db, database_dsn):
+async def test_aggregate_query_budget_and_no_server_cache(app, client, db, database_dsn):
     import asyncpg
 
     from mileaf.dependencies import get_pool
@@ -378,7 +384,9 @@ async def test_one_aggregate_query_and_no_server_cache(app, client, db, database
             first = await client.get(BASE, params={**WINDOW, "kind": kind})
             await asyncio.sleep(0)
             assert first.status_code == 200
-            assert len([query for query in queries if f"FROM {table} " in query]) == 1
+            assert len([query for query in queries if f"FROM {table} " in query]) == (
+                2 if kind == "driving" else 1
+            )
         first = await client.get(BASE, params=WINDOW)
         await db.execute("UPDATE drives SET distance=40 WHERE id=1")
         second = await client.get(BASE, params=WINDOW)

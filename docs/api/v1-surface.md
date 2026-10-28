@@ -95,7 +95,7 @@ ETag 哈希覆盖已序列化 JSON、路径与完整查询串；支持 `If-None-
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/v1/vehicles/{id}/stats?kind=driving\|charging&bucket=day\|week\|month\|year&from&to&tz=<IANA>` | 按桶聚合；`tz` 默认 `UTC`，非法返回 400 |
+| GET | `/v1/vehicles/{id}/stats?kind=driving\|charging&bucket=day\|week\|month\|year&from&to&tz=<IANA>` | 按桶聚合；`tz` 默认 `UTC`，非法返回 400；`kind=driving` 另有 0.3.0 覆盖/配对/比较质量字段，见末节 |
 
 延后屏幕的端点先占位、不实现：`/states`、`/timeline`、`/battery-health`、`/updates`、`/locations`。
 
@@ -442,6 +442,81 @@ tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_anal
 各接口的字段、单位、方法与阈值说明随对应工单交付，最终冻结与验收见 #41。
 契约变更后用 `UV_CACHE_DIR=.cache/uv uv run python scripts/freeze_openapi.py` 重新生成
 `openapi-0.3.0.json`，HTTP 测试校验运行时 `/openapi.json` 与该冻结快照逐字段相等。
+
+### ST02 驾驶覆盖、配对净电耗与比较质量（#35）
+
+`GET /v1/vehicles/{id}/stats?kind=driving` 只做响应加法：旧字段、旧算法与旧舍入不变，
+每个 `buckets[]` 与 `totals` 新增 `driving_coverage`、`net_consumption_paired`、
+`comparison_quality`，顶层新增 `query`、`as_of`、`range_kind`；`kind=charging` 响应不变。
+`query` 回显 `vehicle_id`、规范化有效 `from`/`to`、`tz`、`bucket`、`filters`（无筛选为显式 `{}`）
+与 `time_basis=started_at`；`as_of` 是 UTC 表示生成时刻，不是数据库快照时刻。
+有效 `to` 先裁剪到请求时刻，裁剪后为空区间返回 `400 invalid_request`，不生成未来桶。
+驾驶 stats 仍是 2 条业务查询（旧聚合 + 覆盖聚合，不含鉴权与车辆查找），各受 5s
+`statement_timeout`；桶上限沿旧规则（day ≤732、week ≤106、month ≤25、year ≤3）。
+该响应改用弱 ETag，校验除 `as_of` 外的完整规范化表示（含 `query` 与三个质量族），命中返回 304。
+
+| 字段 | 单位 / 类型 | 语义与算法 |
+|---|---|---|
+| driving_coverage.status | 枚举 | `available`（有已完成候选）/ `no_records`（无候选）/ `insufficient_data` / `unsupported`；进行中行程只计入 `ongoing_drives`，不进入任何最终指标 |
+| driving_coverage.method / version / thresholds | 字符串 / 整数 / 对象 | `driving-coverage-v1`、`1`、`{}`（无阈值也返回空对象） |
+| completed_drives / ongoing_drives | 次 | `end_date` 非空为完成；候选按 `started_at` 整体归期，跨期行程不切分能量或时长 |
+| distance_known_drives / distance_known_km | 次 / km | 距离非空且有限的行程数及其原始距离和；负值算「已知」，不算有效 |
+| net_energy_known_drives / net_energy_known_distance_km | 次 / km | 估算净能量非空有限的行程数，以及这些行程中距离有限的里程和 |
+| duration_known_drives / duration_known_min | 次 / min | 记录时长非空的行程数与时长和，不回退为时间戳跨度 |
+| distance / net_energy / duration | 对象 | 三个不同有效集各自的 coverage：`candidate_count`、`valid_count`、`excluded_count`、`candidate_distance_km`、`valid_distance_km`、`candidate_duration_min`、`valid_duration_min`、`unknown_distance_count`、`unknown_duration_count`、`excluded_by_reason` |
+| *.excluded_by_reason | 对象（整数计数） | 有效距离为有限且 ≥0，有效时长为有限且 ≥0；每条被排除记录只有一个原因，`candidate_count = valid_count + excluded_count = valid_count + Σ excluded_by_reason` |
+| driving_coverage.excluded_by_reason | 对象 | 按 `distance`/`net_energy`/`duration` 分族给出上述计数，不用全局 coverage 代替，也不跨族累加 |
+| net_consumption_paired.method / version | 字符串 / 整数 | `paired-net-consumption-v1`、`1`；`thresholds.distance_exclusive_min_km = 0` |
+| net_consumption_paired.value_wh_km | Wh/km，可空 | `numerator_energy_kwh × 1000 / denominator_distance_km`，不预舍入；分母为 0 或缺失时 null |
+| numerator_energy_kwh / denominator_distance_km | kWh / km，可空 | 同一批 `distance > 0` 且估算净能量非空有限的已完成行程的分子与分母，沿旧 `preferred_range` 能量表达式；无候选为 0，有候选但无有效值为 null |
+| eligible_drives / excluded_drives | 次 | 配对有效行程数与被排除数，两者之和为 `completed_drives` |
+| net_consumption_paired.coverage | 对象 | 配对有效集自己的 coverage，原因按 `missing_distance` → `invalid_distance` → `non_positive_distance` → `missing_energy` → `invalid_energy` 优先级取唯一值 |
+| comparison_quality.method / version | 字符串 / 整数 | `paired-comparison-quality-v1`、`1` |
+| comparison_quality.thresholds / validation | 对象 / 枚举 | `minimum_drives = 5`、`minimum_distance_coverage = 0.8`，`validation = provisional`：首版产品筛选门槛，不是统计显著性标准 |
+| comparison_quality.sample_status | 枚举 | 配对有效行程 ≥5 且 `distance_coverage ≥ 0.8` 且分母 >0 时 `adequate`，否则 `insufficient_data`；功能不支持时 `unsupported` |
+| comparison_quality.distance_coverage | 比率，可空 | 配对距离 ÷ 同批候选的有效已知总距离；分母为 0 或缺失时 null，null 不能达标 |
+| eligible_drives / unknown_distance_drives / invalid_distance_drives | 次 | 比较输入的诊断计数，另列不参与加和 |
+| range_kind（顶层） | `rated` \| `ideal` \| null | 本次采用的 `settings.preferred_range`；`unsupported` 时为 null。不同 `range_kind` 的两期不是同口径 |
+
+`driving_coverage` 能力位在 `/v1/meta.statistics_insights.features.driving_coverage` 暴露，
+由 `STATISTICS_REQUIREMENTS["driving_coverage"]` 注册的源列（`drives.duration_min`，int2/int4）探测。
+该列同时是既有启动探针的必需列，因此缺列时服务按 ADR-0002 拒绝启动（fail closed），
+不会退化成 `no_records`；三个质量族仍保留 `unsupported`，用于源列可选时的按功能降级，
+并与 `no_records`（无候选）、`insufficient_data`（有候选但无有效输入）严格区分。
+
+旧 `consumption_wh_km_net` 仍用旧能量表达式与全部里程分母，`consumption_wh_km_gross` 仍按
+结束日入电量 ÷ 驾驶里程并保留旧舍入；两者与 `value_wh_km` 不同口径，不得互相替代，
+净毛差也不解释为停放耗电。
+
+固定夹具手算（`rated`、efficiency 0.15 kWh/km，`2026-03-02T00:00Z`–`2026-03-06T00:00Z`）：
+
+| 期间 | 完成行程 | 已知里程 km | 能量已知 | 配对分子 kWh | 配对分母 km | value_wh_km |
+|---|---:|---:|---:|---:|---:|---:|
+| totals | 3 | `0 + 20 + 20 = 40` | 2 | 3.75 | 20 | `3.75 × 1000 / 20 = 187.5` |
+
+零里程行程贡献次数与能量但不进配对分母（`non_positive_distance`）；非正 range 差行程能量未知
+（`missing_energy`），因此 `distance_known_drives = 3` 而 `net_energy_known_drives = 2`。
+全期值不等于桶均值：把 id 18 的里程改成 10 km 后，1 月 1 日桶 `3.75 × 1000 / 10 = 375`、
+1 月 2 日桶 `187.5`，totals 为 `7.5 × 1000 / 30 = 250`，不是 `(375 + 187.5) / 2 = 281.25`。
+
+#### Mobile 两次查询比较接入
+
+首版不提供 comparison 端点，也不做服务端相对变化。Mobile 对同一车辆发两次
+`stats?kind=driving`（当期与参考期），并遵守：
+
+- **日历对齐**：周对上周同星期同本地时刻，月对上月同日同本地时刻，年对去年同月日同本地时刻；
+  自定义区间按触及的本地日期数前移相同日期数，并保持起止各自的本地时刻。目标月日不存在
+  （含闰日）时裁到目标月末并标 `unaligned_calendar`；DST 不存在或重复的本地时刻同样标
+  `unaligned_calendar`，不以毫秒差代替日历。非对齐区间仍可查询原值，默认相对变化为 null。
+- **非原子快照**：两次请求各有自己的 `query` 与 `as_of`，服务端不保证跨请求或跨分页的原子快照；
+  两端都必须保留 `query`/`as_of` 以便追溯，期间上游写入可能造成轻微不一致。
+- **零基期与缺历史**：参考期为 0 时相对变化为 null；参考期无记录或历史不足时不得当作 0。
+  只有两期都 `sample_status = adequate`、同 `range_kind`、同 `bucket`、日历对齐且进度相同时，
+  才展示绝对差 `current − reference` 与相对差 `(current − reference) / reference`。
+- **不下强结论**：`method`、`version` 或 `range_kind` 不同、任一期不达标、日历不对齐时，只展示
+  原值与质量状态；服务端不输出自然语言判断、评分、排名或建议，Mobile 也不得代为生成。
+- 新增比较输入（分子、分母、覆盖计数）均未预舍入；Mobile 只做日历组织与展示差值，
+  不得用分页数据或桶比率重算能量与统计量。
 
 ### 行程证据筛选与稳定分页（ST03–ST04 下钻）
 
