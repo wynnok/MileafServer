@@ -694,7 +694,7 @@ async def test_pagination_is_stable_and_totals_ignore_cursor(client, db):
     assert len(seen) == 4  # no duplicates, no gaps across pages
 
 
-async def test_no_candidates_is_no_records_and_all_excluded_is_insufficient(client, db):
+async def test_no_candidates_and_all_excluded_are_insufficient(client, db):
     # Single event: no adjacent pair => no candidate window.
     await _drive(
         db,
@@ -707,7 +707,7 @@ async def test_no_candidates_is_no_records_and_all_excluded_is_insufficient(clie
         eobl=1020.0,
     )
     empty = (await client.get(URL, params=_params(to="2026-03-10T09:30:00Z"))).json()
-    assert empty["status"] == "no_records"
+    assert empty["status"] == "insufficient_data"
     assert empty["totals"]["candidate_windows"] == 0
     assert empty["totals"]["open_windows"] == 1  # car parked after its only drive, still open
     assert empty["matched_windows"] == 1
@@ -1075,3 +1075,33 @@ async def test_charging_end_odometer_uses_highest_id_position_at_end_date(client
     assert w2["start"]["odometer_km"] == pytest.approx(1020.6)  # highest id, not the 9999.0 decoy
     assert w2["start"]["position_id"] == 2_109_105
     assert w2["included"] is True
+
+
+async def test_nested_states_started_before_window_are_ambiguous(client, db):
+    await _drive(
+        db,
+        990,
+        _dt("2026-03-10T01:00"),
+        _dt("2026-03-10T03:00"),
+        sbl=80,
+        sobl=100,
+        ebl=79,
+        eobl=110,
+    )
+    await _drive(
+        db,
+        991,
+        _dt("2026-03-10T04:00"),
+        _dt("2026-03-10T05:00"),
+        sbl=78,
+        sobl=110,
+        ebl=77,
+        eobl=120,
+    )
+    await _state(db, 990, "online", _dt("2026-03-10T00:00"), _dt("2026-03-10T10:00"))
+    await _state(db, 991, "asleep", _dt("2026-03-10T01:00"), _dt("2026-03-10T02:00"))
+    await _state(db, 992, "offline", _dt("2026-03-10T02:30"), _dt("2026-03-10T04:00"))
+    result = (await client.get(URL, params=_params())).json()
+    closed = next(item for item in result["items"] if item["end_event"] is not None)
+    assert closed["exclusion_reason"] == "ambiguous_states"
+    assert result["totals"]["valid_windows"] == 0

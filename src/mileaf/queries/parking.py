@@ -1,9 +1,7 @@
 """Read-only source queries for ST08 closed parking windows (closed-window-soc-v1).
 
-Two bounded business queries feed the whole endpoint: one event/endpoint projection over
-``drives`` and ``charging_processes`` (each resolved to its exact boundary position), and one
-``states`` projection. Window construction, overlap detection, state intersection, exclusion
-priority and aggregation run server side over the complete match set, never per window.
+Event and state projections are composed into the aggregate query. Window construction,
+quality, aggregation and bounded evidence paging run inside PostgreSQL.
 """
 
 from mileaf.queries.statistics_fields import STATISTICS_REQUIREMENTS
@@ -98,8 +96,11 @@ def parking_events_sql() -> str:
         "FROM charging_processes cp "
         "LEFT JOIN positions sp ON sp.id=cp.position_id AND sp.car_id=cp.car_id "
         "AND sp.date=cp.start_date "
-        "LEFT JOIN LATERAL (SELECT p.id, p.odometer, p.date FROM positions p "
-        "WHERE p.car_id=cp.car_id AND p.date=cp.end_date ORDER BY p.id DESC LIMIT 1) ep ON TRUE "
+        "LEFT JOIN (SELECT DISTINCT ON (p.car_id,p.date) p.car_id, p.id, p.odometer, p.date "
+        "FROM positions p JOIN charging_processes boundary ON boundary.car_id=p.car_id AND "
+        "boundary.end_date=p.date "
+        "WHERE boundary.car_id=$1 ORDER BY p.car_id,p.date,p.id DESC) ep ON "
+        "ep.car_id=cp.car_id AND ep.date=cp.end_date "
         "WHERE cp.car_id=$1 AND cp.start_date AT TIME ZONE 'UTC'<=$2 "
         "AND (cp.end_date IS NULL OR cp.end_date AT TIME ZONE 'UTC'>=$3)"
     )
