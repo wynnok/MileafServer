@@ -442,3 +442,49 @@ tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_anal
 各接口的字段、单位、方法与阈值说明随对应工单交付，最终冻结与验收见 #41。
 契约变更后用 `UV_CACHE_DIR=.cache/uv uv run python scripts/freeze_openapi.py` 重新生成
 `openapi-0.3.0.json`，HTTP 测试校验运行时 `/openapi.json` 与该冻结快照逐字段相等。
+
+### 满电等效额定续航观察（ST07 / #39）
+
+`GET /v1/vehicles/{vehicle_id}/range-observations`，Bearer + 车辆关联校验，30 秒私有缓存与
+弱 ETag（校验体排除 `as_of`），错误沿统一 envelope 与 X-Request-ID。
+
+| 参数 | 约束 |
+|---|---|
+| months | 必填，枚举 `6`/`12`，其他值 400 invalid_request |
+| to | 可选，必须带时区偏移；先裁到 `as_of`，缺省即 `as_of`；裸时间戳或不可解析为 400 |
+| tz | 可选 IANA 时区，缺省 UTC；非法为 400 |
+
+不收 `from`，`bucket` 固定 `month`。窗口按本地日历算：`to` 前一微秒确定最后一个本地月，
+首月 1 日 00:00（本地）为 `from`，共 6/12 个月桶，不按 180/365 天。桶按本地月生成后以 UTC
+时刻输出；`partial=true` 表示该月被有效截止截断。整月结束请求用下一月月初作半开上界，
+此时最后一桶为上月且 `partial=false`。缺月保留显式空桶，数值 null，不插值。
+
+| 字段 | 源列 | 单位与规则 |
+|---|---|---|
+| 会话候选 | charging_processes.car_id/start_date/end_date | 仅 end_date 非空；按 ended_at 整体归期，跨月会话归入其结束本地月 |
+| 采样候选 | charges.charging_process_id/date | 只取会话 `start_date..end_date`（含端点）内的原始采样；范围外采样不是候选 |
+| SOC | charges.battery_level | 百分比，固定来源，不 coalesce usable_battery_level |
+| 额定续航 | charges.rated_battery_range_km | km，不混用 ideal/estimated；`rated` 是唯一 range_kind |
+| 点值 | 上两者同点配对 | km，`rated_battery_range_km × 100 / battery_level` |
+| 进行中会话 | charging_processes.end_date IS NULL | `ongoing_sessions`，计 [from,to) 内开始且未结束者，不参与观察 |
+
+有效点要求 SOC 在闭区间 [20,90] 且额定续航 >0 且有限；排除原因按固定优先级计唯一值：
+`missing_soc` → `soc_out_of_range` → `invalid_rated_range`（缺、非正、NaN/Inf 同列），
+三者之和等于 `excluded_points = candidate_points - valid_points`。
+
+三层等权，全部在 PostgreSQL 内用 `percentile_cont` 聚合，不预舍入：
+会话内点值中位数 → 每个本地结束日的会话值中位数 → 每月日值的 P50/P10/P90。
+`totals` 直接对全期日值算同样分位数，不平均月份结果。长充高频采样因此不支配趋势。
+
+`coverage` 逐月与总体各一份：candidate_points、valid_points、excluded_points、
+candidate_sessions、valid_sessions、valid_days、excluded_by_reason。
+`status` 为 available / no_records（无任何候选）/ insufficient_data（有候选但 valid_days=0）/
+unsupported（缺源列，优先于数据量判断）；`sample_status` 在 available 时按 valid_days 给
+adequate（≥3）或 sparse（1–2），其余为 insufficient_data。
+`first_observed_at` 是查询窗口内最早有效原始采样的 UTC 时刻，`first_observed_scope="query"`，
+不是新车基线；无有效采样为 null。响应回显 `query`（vehicle_id、from/to、tz、bucket=month、
+filters.months、time_basis=ended_at）、`as_of`、`range_kind="rated"`、
+`soc_source="battery_level"`、`method="session-day-rated-range-v1"`、`version=1` 与
+`thresholds`（soc_min=20、soc_max=90、minimum_valid_days=3、validation=provisional）。
+只声称观察：不输出容量、SOH、衰减百分比、出厂基线、等效循环或可行驶距离预测。
+预算：单条业务 SQL（≤2 上限）、5 秒 statement_timeout、最多 12 个月桶，不回传原始采样。

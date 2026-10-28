@@ -27,6 +27,7 @@ from mileaf.meta import router as meta_router
 from mileaf.queries import charging as charging  # Register shared AC/DC requirements.
 from mileaf.queries import energy as energy  # Register shared drive-energy requirements.
 from mileaf.queries import locations as locations  # Register shared location requirements.
+from mileaf.range_observations import router as range_observations_router
 from mileaf.stats import router as stats_router
 from mileaf.summary import router as summary_router
 from mileaf.units import initialize_units
@@ -38,6 +39,7 @@ ROUTERS = [
     meta_router,
     vehicles_router,
     stats_router,
+    range_observations_router,
     drives_router,
     charging_sessions_router,
     charging_locations_router,
