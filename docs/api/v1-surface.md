@@ -78,7 +78,7 @@ ETag 哈希覆盖已序列化 JSON、路径与完整查询串；支持 `If-None-
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/v1/vehicles/{id}/drives?from&to&cursor&limit` | 行程分页列表 |
+| GET | `/v1/vehicles/{id}/drives?from&to&tz&distance_min_km&distance_max_km&outside_temp_min_c&outside_temp_max_c&energy_status&completed_only&cursor&limit` | 行程分页列表；筛选与匹配回显见 0.3.0 增量 |
 | GET | `/v1/drives/{id}` | 行程详情（含起终点地址与围栏、温度、速度极值） |
 | GET | `/v1/drives/{id}/series?fields=speed,battery,elevation&points=200` | 图表序列，服务端降采样 |
 
@@ -488,3 +488,48 @@ filters.months、time_basis=ended_at）、`as_of`、`range_kind="rated"`、
 `thresholds`（soc_min=20、soc_max=90、minimum_valid_days=3、validation=provisional）。
 只声称观察：不输出容量、SOH、衰减百分比、出厂基线、等效循环或可行驶距离预测。
 预算：单条业务 SQL（≤2 上限）、5 秒 statement_timeout、最多 12 个月桶，不回传原始采样。
+
+### 行程证据筛选与稳定分页（ST03–ST04 下钻）
+
+状态：Implemented locally（#36）。`GET /v1/vehicles/{vehicle_id}/drives` 保留 0.1 的默认时间范围
+（省略侧不加限制）、默认页大小 20 与排序 `started_at DESC, id DESC`，新增筛选与回显字段。
+匹配规则只有一份实现：`src/mileaf/queries/driving_query.py::match_source`，方法标识
+`driving-match-v1`（常量 `DRIVING_MATCH_METHOD`）；ST03/ST04 分组端点构造自己的
+`DrivingQueryEcho`（含 `DrivingFilters` 与 `completed_only=true`）后调用同一函数，
+其 `evidence_filter` 可直接原样回灌本列表。
+
+| 参数 | 类型与默认 | 约束 |
+|---|---|---|
+| `from` / `to` | ISO 8601 带偏移，均可省略 | 半开 `[from,to)`；显式未来 `to` 裁剪到请求时刻，裁剪后空范围 400 |
+| `tz` | IANA 字符串，默认 `UTC` | 非法 400；只参与回显与游标绑定，时间比较仍按 UTC |
+| `distance_min_km` / `distance_max_km` | float，km，可空 | 必须有限；下界含、上界不含；同时给出须 `min < max`，否则 400 |
+| `outside_temp_min_c` / `outside_temp_max_c` | float，°C，可空 | 同上；源列 `drives.outside_temp_avg`，负温度按同一半开规则 |
+| `energy_status` | `known` \| `unknown`，可空 | 复用既有估算净能量非空语义：`known` = 已完成且 `energy_kwh` 非空 |
+| `completed_only` | bool，默认 `false` | `true` 只返回 `end_date` 非空的完成行程 |
+| `cursor` / `limit` | 见分页与序列 | `limit` 1–100，默认 20 |
+
+条件取交集。距离或温度为 NULL、`NaN`、`±Infinity` 时不匹配任何数值条件；负原值保留在证据里
+（例如 `distance_km = -1`），其排除原因由分组端点的 coverage 解释。进行中行程仍进入默认列表，
+但 `ended_at`、`distance_km`、`duration_min`、`energy_kwh`、`consumption_wh_km` 均为 null，
+不把临时值当作最终值；`completed_only=false` 也不把它计作完成行程。
+
+响应在 `items`/`next_cursor` 之外新增：
+
+| 字段 | 语义 |
+|---|---|
+| `query` | `vehicle_id`、规范化有效 `from`/`to`、`tz`、`bucket`（恒为 null）、`time_basis`（恒为 `started_at`）、`filters`；无筛选时 `filters` 为显式空对象，默认值（如 `completed_only=false`）省略 |
+| `as_of` | UTC 表示生成时刻，不是数据库历史快照，分页间不保证原子性 |
+| `matched_drives` | 完整匹配集计数，独立于当前页与页大小；源数据不变时所有页不重不漏 |
+| `method` / `version` / `thresholds` | `driving-match-v1` / `1` / `{}`（匹配规则不含建议阈值） |
+| `status` | `available`；无候选为 `no_records` |
+
+游标是查询绑定的版本化 keyset：绑定方法版本、车辆、原始请求范围（裁剪前的 `to`）、`tz`、
+全部筛选、`completed_only` 与排序，**不绑定页大小**，翻页时可自由改 `limit`。
+上下文不匹配或游标非法返回 400 `invalid_request`。0.1/0.2 的旧行程游标只在请求不含任何新增参数
+（`tz` 与全部筛选）时继续兼容，与新增筛选混用返回 400 并要求重新分页。
+
+预算与缓存：一次列表请求发 3 条业务查询（完整匹配计数、keyset 页、批量地点），上限 6，
+禁止逐行地点查询；每条 SQL 沿既有 `SET LOCAL statement_timeout='5s'`；响应沿既有 30 秒
+进程内缓存与字节级 ETag/304。本切片不引入新源列：`drives.distance`、`drives.outside_temp_avg`
+及能量源列已由 0.1/0.2 必需列启动探针覆盖，缺列时启动失败并给出修复指引，不静默降级为
+`unsupported`，因此 `meta.statistics_insights.features` 不新增本切片的功能位。

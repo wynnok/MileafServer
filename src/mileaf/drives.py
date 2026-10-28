@@ -1,5 +1,6 @@
 """Read-only drive detail and metric projection."""
 
+import base64
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -13,10 +14,19 @@ from mileaf.database import fetch_rows
 from mileaf.dependencies import get_cache, get_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.probes import CAPABILITIES
+from mileaf.queries.driving_query import (
+    DRIVING_MATCH_METHOD,
+    DrivingQuery,
+    DrivingQueryEcho,
+    drive_cursor_key,
+    driving_parameters,
+    encode_drive_cursor,
+    match_source,
+)
 from mileaf.queries.energy import consumption_wh_km_sql, energy_kwh_sql
 from mileaf.queries.locations import Location, LocationRef, fetch_locations
-from mileaf.queries.pagination import fetch_page
-from mileaf.queries.parameters import ListParameters, ResourceID, ResourceRoute, list_parameters
+from mileaf.queries.pagination import decode_cursor, fetch_page
+from mileaf.queries.parameters import ResourceID, ResourceRoute
 from mileaf.queries.series import fetch_series
 from mileaf.units import UnitSettings, consumption_wh_km, distance_km, get_units, speed_kmh
 from mileaf.vehicles import VehicleIdentity, get_vehicle_or_404
@@ -133,29 +143,61 @@ async def drive_detail(
 class DrivePage(BaseModel):
     items: list[Drive]
     next_cursor: str | None
+    query: DrivingQueryEcho
+    as_of: datetime
+    matched_drives: int
+    method: Literal["driving-match-v1"] = DRIVING_MATCH_METHOD
+    version: int = 1
+    thresholds: dict[str, float] = {}
+    status: Literal["available", "no_records"]
 
 
 @router.get("/vehicles/{vehicle_id}/drives", response_model=DrivePage)
 async def drive_list(
     request: Request,
     vehicle: Annotated[VehicleIdentity, Depends(get_vehicle_or_404)],
-    params: Annotated[ListParameters, Depends(list_parameters)],
+    params: Annotated[DrivingQuery, Depends(driving_parameters)],
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
     cache: Annotated[TTLCache, Depends(get_cache)],
 ) -> Response:
+    key = drive_cursor_key(params)
+
     async def render() -> bytes:
         async with pool.acquire() as db:
+            source, args = match_source(params.echo, vehicle.id, source=DRIVE_SOURCE)
+            count = await fetch_rows(db, f"SELECT count(*) AS count FROM ({source}) matched", *args)
+            # fetch_page accepts the original time/id key; expose only query-bound cursors.
+            legacy_cursor = None
+            if key is not None:
+                legacy_cursor = (
+                    base64.urlsafe_b64encode(f"{key[0].isoformat()}|{key[1]}".encode())
+                    .decode()
+                    .rstrip("=")
+                )
             page = await fetch_page(
                 db,
-                source=DRIVE_SOURCE + " WHERE d.car_id=$1",
-                args=(vehicle.id,),
-                from_=params.from_,
-                to=params.to,
-                cursor=params.cursor,
+                source=source,
+                args=tuple(args),
+                cursor=legacy_cursor,
                 limit=params.limit,
             )
             items = await drive_models(db, page.rows)
-            return DrivePage(items=items, next_cursor=page.next_cursor).model_dump_json().encode()
+            next_cursor = None
+            if page.next_cursor is not None:
+                timestamp, identifier = decode_cursor(page.next_cursor)
+                next_cursor = encode_drive_cursor(params, timestamp, identifier)
+            return (
+                DrivePage(
+                    items=items,
+                    next_cursor=next_cursor,
+                    query=params.echo,
+                    as_of=params.as_of,
+                    matched_drives=count[0]["count"],
+                    status="available" if count[0]["count"] else "no_records",
+                )
+                .model_dump_json(by_alias=True)
+                .encode()
+            )
 
     return await cached_response(
         request, cache=cache, key=(request.url.path, request.url.query), render=render, ttl=30

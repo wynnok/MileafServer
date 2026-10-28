@@ -1782,12 +1782,27 @@
       },
       "DrivePage": {
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/Drive"
             },
             "title": "Items",
             "type": "array"
+          },
+          "matched_drives": {
+            "title": "Matched Drives",
+            "type": "integer"
+          },
+          "method": {
+            "const": "driving-match-v1",
+            "default": "driving-match-v1",
+            "title": "Method",
+            "type": "string"
           },
           "next_cursor": {
             "anyOf": [
@@ -1799,11 +1814,39 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "query": {
+            "$ref": "#/components/schemas/DrivingQueryEcho"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "query",
+          "as_of",
+          "matched_drives",
+          "status"
         ],
         "title": "DrivePage",
         "type": "object"
@@ -1986,6 +2029,76 @@
         "title": "DrivingBucket",
         "type": "object"
       },
+      "DrivingFilters": {
+        "properties": {
+          "completed_only": {
+            "default": false,
+            "title": "Completed Only",
+            "type": "boolean"
+          },
+          "distance_max_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Max Km"
+          },
+          "distance_min_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Min Km"
+          },
+          "energy_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Status"
+          },
+          "outside_temp_max_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Temp Max C"
+          },
+          "outside_temp_min_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Temp Min C"
+          }
+        },
+        "title": "DrivingFilters",
+        "type": "object"
+      },
       "DrivingMetrics": {
         "properties": {
           "consumption_wh_km_gross": {
@@ -2050,6 +2163,65 @@
           "speed_max_kmh"
         ],
         "title": "DrivingMetrics",
+        "type": "object"
+      },
+      "DrivingQueryEcho": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "null"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "time_basis": {
+            "const": "started_at",
+            "default": "started_at",
+            "title": "Time Basis",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "vehicle_id": {
+            "title": "Vehicle Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "from",
+          "to",
+          "tz",
+          "filters"
+        ],
+        "title": "DrivingQueryEcho",
         "type": "object"
       },
       "DrivingStats": {
@@ -4314,7 +4486,6 @@
             "name": "vehicle_id",
             "required": true,
             "schema": {
-              "exclusiveMinimum": 0,
               "title": "Vehicle Id",
               "type": "integer"
             }
@@ -4349,6 +4520,110 @@
                 }
               ],
               "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "title": "Tz",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_min_km",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Distance Min Km"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_max_km",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Distance Max Km"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outside_temp_min_c",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outside Temp Min C"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outside_temp_max_c",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outside Temp Max C"
+            }
+          },
+          {
+            "in": "query",
+            "name": "energy_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "known",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Energy Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "completed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Completed Only",
+              "type": "boolean"
             }
           },
           {
