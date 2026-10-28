@@ -173,12 +173,147 @@ async def test_invalid_queries_and_clipped_upper_bound_keep_the_public_error_con
     assert unchanged.headers["cache-control"] == "private, max-age=30"
 
 
+async def test_default_window_page_size_and_order_are_preserved(client, db):
+    await seed_evidence(db)
+    body = (await client.get("/v1/vehicles/1/drives")).json()
+    assert body["query"]["from"] is None
+    assert body["query"]["to"] is None
+    assert body["query"]["tz"] == "UTC"
+    # 50 fixture drives for car 1 plus the seven seeded evidence rows, still unbounded.
+    assert body["matched_drives"] == 57
+    assert len(body["items"]) == 20
+    assert body["items"][0]["id"] == 17
+    assert body["next_cursor"] is not None
+
+
+async def test_in_progress_rows_stay_evidence_without_final_values(client, db):
+    await seed_evidence(db)
+    # A provisional range endpoint must not turn an unfinished row into a completed one.
+    await db.execute("UPDATE drives SET end_rated_range_km=325 WHERE id=607")
+    everything = (await client.get("/v1/vehicles/1/drives", params=BOUNDS)).json()
+    assert everything["matched_drives"] == 7
+    running = next(row for row in everything["items"] if row["id"] == 607)
+    assert running["ended_at"] is None
+    assert running["distance_km"] is None
+    assert running["duration_min"] is None
+    assert running["energy_kwh"] is None
+    assert running["consumption_wh_km"] is None
+    completed = await client.get(
+        "/v1/vehicles/1/drives", params=BOUNDS | {"completed_only": "true"}
+    )
+    assert completed.status_code == 200
+    assert [row["id"] for row in completed.json()["items"]] == [606, 605, 604, 603, 602, 601]
+    assert completed.json()["matched_drives"] == 6
+    assert completed.json()["query"]["filters"] == {"completed_only": True}
+
+
+async def test_paging_covers_the_whole_match_set_without_gaps_or_duplicates(client, db):
+    await seed_evidence(db)
+    # 608 shares started_at with 603, so the stable tie-break is id DESC.
+    await db.execute("""
+        INSERT INTO drives(id,car_id,start_date,end_date,distance,duration_min,
+            start_rated_range_km,end_rated_range_km,outside_temp_avg)
+        VALUES (608,1,'2025-06-03','2025-06-03 02:00',20,60,350,325,4.9)
+    """)
+    # Hand-computed match set: 604 fails temp<5, 605 has unknown temp, 606 unknown distance.
+    filters = BOUNDS | {"distance_min_km": -5, "outside_temp_max_c": 5}
+    expected = [607, 608, 603, 602, 601]
+    complete = await client.get("/v1/vehicles/1/drives", params=filters | {"limit": 100})
+    assert [row["id"] for row in complete.json()["items"]] == expected
+    assert complete.json()["matched_drives"] == 5
+
+    walked: list[int] = []
+    cursor: str | None = None
+    for _ in range(len(expected)):
+        query = dict(filters, limit=2)
+        if cursor is not None:
+            query["cursor"] = cursor
+        page = await client.get("/v1/vehicles/1/drives", params=query)
+        assert page.status_code == 200
+        body = page.json()
+        assert body["matched_drives"] == 5
+        walked.extend(row["id"] for row in body["items"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+    assert cursor is None
+    assert walked == expected
+    assert len(set(walked)) == len(walked)
+
+    # A cursor stays valid when the page size changes; it is bound to the query, not the size.
+    narrow = (await client.get("/v1/vehicles/1/drives", params=filters | {"limit": 1})).json()
+    assert [row["id"] for row in narrow["items"]] == [607]
+    widened = await client.get(
+        "/v1/vehicles/1/drives", params=filters | {"limit": 3, "cursor": narrow["next_cursor"]}
+    )
+    assert widened.status_code == 200
+    assert [row["id"] for row in widened.json()["items"]] == [608, 603, 602]
+
+
+async def test_filters_reach_records_beyond_the_first_page(client, db):
+    await seed_evidence(db)
+    path = "/v1/vehicles/1/drives"
+    first = (await client.get(path, params=BOUNDS | {"limit": 2})).json()
+    assert [row["id"] for row in first["items"]] == [607, 606]
+    # 605 is the only negative-distance row and sits three pages into the unfiltered list.
+    reached = await client.get(path, params=BOUNDS | {"distance_min_km": -2, "distance_max_km": 0})
+    assert reached.status_code == 200
+    assert [row["id"] for row in reached.json()["items"]] == [605]
+    assert reached.json()["matched_drives"] == 1
+
+
+async def test_one_page_stays_within_the_query_budget(app, client, db, database_dsn):
+    import asyncio
+
+    import asyncpg
+
+    from mileaf.dependencies import get_pool
+
+    await seed_evidence(db)
+    queries: list[str] = []
+
+    async def record_queries(connection: asyncpg.Connection) -> None:
+        connection.add_query_logger(lambda query: queries.append(query.query))
+
+    pool = await asyncpg.create_pool(
+        database_dsn,
+        min_size=1,
+        max_size=1,
+        init=record_queries,
+        server_settings={"default_transaction_read_only": "on"},
+    )
+    app.dependency_overrides[get_pool] = lambda: pool
+    try:
+        # Warm asyncpg's array codecs and the 30 second cache outside the measured page.
+        await client.get("/v1/vehicles/1/drives", params=BOUNDS | {"limit": 3})
+        await asyncio.sleep(0)
+        queries.clear()
+        measured = await client.get(
+            "/v1/vehicles/1/drives", params=BOUNDS | {"limit": 3, "distance_min_km": -5}
+        )
+        await asyncio.sleep(0)
+        assert measured.status_code == 200
+        assert len(measured.json()["items"]) == 3
+        business = [query for query in queries if "FROM drives d" in query or "unnest(" in query]
+        assert len(business) <= 6
+        assert len([query for query in business if "SELECT count(*) AS count FROM (" in query]) == 1
+        assert len([query for query in business if "WITH source AS (" in query]) == 1
+        # One batched place query for the whole page, never one per row.
+        assert len([query for query in business if "unnest(" in query]) == 1
+        # Every business statement runs under the shared five second local timeout.
+        assert queries.count("SET LOCAL statement_timeout = '5s'") == len(business)
+    finally:
+        app.dependency_overrides.pop(get_pool)
+        await pool.close()
+
+
 async def test_driving_evidence_openapi_declares_filters_and_echo(client):
     schema = (await client.get("/openapi.json")).json()
     operation = schema["paths"]["/v1/vehicles/{vehicle_id}/drives"]["get"]
     params = {row["name"]: row for row in operation["parameters"]}
     assert params["completed_only"]["schema"]["default"] is False
     assert params["tz"]["schema"]["default"] == "UTC"
+    assert params["limit"]["schema"]["default"] == "20"
     for name in [
         "distance_min_km",
         "distance_max_km",

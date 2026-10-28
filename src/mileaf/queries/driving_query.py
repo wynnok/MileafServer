@@ -119,12 +119,13 @@ def driving_parameters(
 
 
 def match_source(
-    query: DrivingQuery, vehicle_id: int, *, source: str | None = None
+    echo: DrivingQueryEcho, vehicle_id: int, *, source: str | None = None
 ) -> tuple[str, list[Any]]:
     """Trusted source exposes drives columns plus started_at and energy_kwh aliases.
 
     The default projection is sufficient for analysis without joining position points;
     evidence may supply its existing detail projection to reuse the same match rules.
+    Grouping routes build their own echo, so one implementation serves every caller.
     """
     if source is None:
         source = (
@@ -133,11 +134,11 @@ def match_source(
             f"{energy_kwh_sql()} AS energy_kwh, s.preferred_range::text AS range_kind "
             "FROM drives d JOIN cars c ON c.id=d.car_id CROSS JOIN settings s"
         )
-    filters = query.echo.filters
+    filters = echo.filters
     args: list[Any] = [
         vehicle_id,
-        query.echo.from_,
-        query.echo.to,
+        echo.from_,
+        echo.to,
         filters.distance_min_km,
         filters.distance_max_km,
         filters.outside_temp_min_c,
