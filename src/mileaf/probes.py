@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import asyncpg
 
 from mileaf.queries.charging_fields import OPTIONAL_CHARGING_COLUMNS
+from mileaf.queries.statistics_fields import STATISTICS_REQUIREMENTS
 
 # PostgreSQL udt_name, so enum renames between releases do not affect text casts.
 CAPABILITIES: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {
@@ -27,6 +28,7 @@ class Compatibility:
     teslamate_schema_version: int | None
     tested: bool
     charging_columns: frozenset[tuple[str, str]]
+    statistics_columns: frozenset[tuple[str, str]] = frozenset()
 
 
 async def probe_database(pool: asyncpg.Pool) -> Compatibility:
@@ -70,6 +72,13 @@ async def probe_database(pool: asyncpg.Pool) -> Compatibility:
         frozenset(
             (table, column)
             for table, columns in OPTIONAL_CHARGING_COLUMNS.items()
+            for column, types in columns.items()
+            if available.get((table, column)) in types
+        ),
+        frozenset(
+            (table, column)
+            for tables in STATISTICS_REQUIREMENTS.values()
+            for table, columns in tables.items()
             for column, types in columns.items()
             if available.get((table, column)) in types
         ),

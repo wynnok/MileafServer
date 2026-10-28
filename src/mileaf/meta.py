@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from mileaf.dependencies import get_pool
 from mileaf.queries.charging_fields import ChargingCapabilities, charging_capabilities
+from mileaf.queries.statistics_fields import StatisticsCapabilities, statistics_capabilities
 from mileaf.units import UnitSettings, get_units
 
 router = APIRouter(prefix="/v1")
@@ -28,6 +29,7 @@ class Meta(BaseModel):
     units: Literal["metric"] = "metric"
     source_unit_of_length: Literal["km", "mi"]
     charging_experience: ChargingCapabilities
+    statistics_insights: StatisticsCapabilities
     freshness: Freshness
 
 
@@ -49,6 +51,7 @@ async def meta(
         teslamate_schema_version=compatibility.teslamate_schema_version,
         tested=compatibility.tested,
         charging_experience=charging_capabilities(compatibility.charging_columns),
+        statistics_insights=statistics_capabilities(compatibility.statistics_columns),
         source_unit_of_length=units.source_unit_of_length,
         freshness=Freshness(**dict(row)),
     )
