@@ -73,3 +73,13 @@ async def test_conditions_etag_ignores_nested_generation_time(client, app, db):
         headers={"If-None-Match": response.headers["etag"]},
     )
     assert repeat.status_code == 304
+
+
+async def test_valid_coverage_amounts_exclude_negative_other_metric(client, db):
+    await seed_usage(db)
+    await db.execute("UPDATE drives SET duration_min=-5 WHERE id=701")
+    body = (await client.get(PATH, params=WINDOW | {"view": "conditions"})).json()
+    coverage = body["temperature_bins"][0]["coverage"]
+    assert coverage["duration"]["candidate_distance_km"] == 192
+    assert coverage["duration"]["valid_distance_km"] == 90
+    assert coverage["paired"]["valid_duration_min"] == 90

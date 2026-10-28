@@ -258,8 +258,9 @@ def coverage_amounts_sql() -> list[str]:
             [
                 f"sum(distance) FILTER (WHERE valid_{name} AND "
                 + finite_sql("distance")
-                + f") AS {name}_valid_distance_km",
-                f"sum(duration_min) FILTER (WHERE valid_{name}) AS {name}_valid_duration_min",
+                + f" AND distance >= 0) AS {name}_valid_distance_km",
+                f"sum(duration_min) FILTER (WHERE valid_{name} AND duration_min >= 0) "
+                f"AS {name}_valid_duration_min",
             ]
         )
     return fields
