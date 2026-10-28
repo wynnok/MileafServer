@@ -440,3 +440,5 @@ tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_anal
 `range_observations`、`parking_observations` 的支持布尔值；不复用 `charging-experience-v1` 的版本号。
 新增源列按功能探测，缺列时对应功能为 `unsupported`，不阻断启动、不影响 0.1/0.2 已发布字段。
 各接口的字段、单位、方法与阈值说明随对应工单交付，最终冻结与验收见 #41。
+契约变更后用 `UV_CACHE_DIR=.cache/uv uv run python scripts/freeze_openapi.py` 重新生成
+`openapi-0.3.0.json`，HTTP 测试校验运行时 `/openapi.json` 与该冻结快照逐字段相等。
