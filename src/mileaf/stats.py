@@ -1,7 +1,7 @@
 """Calendar statistics aggregated in PostgreSQL before presentation rounding."""
 
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal, cast
 
@@ -14,7 +14,7 @@ from starlette.responses import Response
 
 from mileaf.cache import conditional_response
 from mileaf.database import fetch_rows
-from mileaf.dependencies import get_pool
+from mileaf.dependencies import get_now, get_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.probes import CAPABILITIES
 from mileaf.queries.charging_metrics import ChargingMetrics, charging_metrics_sql
@@ -24,7 +24,16 @@ from mileaf.queries.charging_query import (
     charging_parameters,
     match_source,
 )
+from mileaf.queries.driving_coverage import (
+    ComparisonQuality,
+    DrivingCoverage,
+    DrivingQueryEcho,
+    PairedNetConsumption,
+    driving_coverage_sql,
+    driving_quality,
+)
 from mileaf.queries.energy import energy_kwh_sql
+from mileaf.queries.statistics_fields import statistics_feature_supported
 from mileaf.queries.time import Bucket, bucket_sql, validate_timezone
 from mileaf.units import consumption_wh_km, distance_km, distance_km_sql, speed_kmh
 from mileaf.vehicles import VehicleIdentity, get_vehicle_or_404
@@ -71,6 +80,9 @@ class DrivingMetrics(BaseModel):
     consumption_wh_km_net: float | None
     consumption_wh_km_gross: float | None
     speed_max_kmh: float | None
+    driving_coverage: DrivingCoverage
+    net_consumption_paired: PairedNetConsumption
+    comparison_quality: ComparisonQuality
 
 
 class DrivingBucket(DrivingMetrics):
@@ -84,6 +96,9 @@ class ChargingBucket(ChargingMetrics):
 class DrivingStats(BaseModel):
     buckets: list[DrivingBucket]
     totals: DrivingMetrics
+    query: DrivingQueryEcho
+    as_of: datetime
+    range_kind: Literal["rated", "ideal"] | None
 
 
 class ChargingStats(BaseModel):
@@ -141,8 +156,15 @@ async def statistics(
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
     params: Annotated[StatsParameters, Depends(stats_parameters)],
     charging: Annotated[ChargingQuery, Depends(charging_parameters)],
+    now: Annotated[datetime, Depends(get_now)],
 ) -> Response:
     driving = params.kind == "driving"
+    if driving:
+        # Clip the effective upper bound to the request instant before bucketing; an
+        # entirely future window has no representation and is a client error.
+        params = replace(params, to=min(params.to, now))
+        if params.to <= params.from_:
+            raise APIError(400, ErrorCode.INVALID_REQUEST, "Statistics range is entirely future")
     args: list[Any] = [vehicle.id, params.from_, params.to, params.tz]
     drive_bucket = bucket_sql(params.bucket, timestamp="d.start_date AT TIME ZONE 'UTC'", tz="$4")
     charge_bucket = bucket_sql(params.bucket, timestamp="cp.end_date AT TIME ZONE 'UTC'", tz="$4")
@@ -221,9 +243,20 @@ async def statistics(
         f"SELECT bucket_start, is_total, {', '.join(metrics)} "
         "FROM aggregated WHERE is_total ORDER BY is_total, bucket_start"
     )
+    # The quality fields are an independently versioned feature: a schema without their
+    # source columns downgrades them to unsupported instead of failing the whole response.
+    coverage = driving and statistics_feature_supported(
+        request.app.state.compatibility.statistics_columns, "driving_coverage"
+    )
     async with pool.acquire() as connection:
         rows = await fetch_rows(connection, query, *args)
+        quality_rows = (
+            await fetch_rows(connection, driving_coverage_sql(params.bucket), *args)
+            if coverage
+            else []
+        )
     if driving:
+        quality = {(row["bucket_start"], row["is_total"]): dict(row) for row in quality_rows}
         driving_rows = []
         for row in rows:
             data = dict(row)
@@ -231,10 +264,24 @@ async def statistics(
             data["speed_max_kmh"] = speed_kmh(data["speed_max_kmh"])
             for name in ("consumption_wh_km_net", "consumption_wh_km_gross"):
                 data[name] = consumption_wh_km(data[name])
+            data.update(
+                driving_quality(
+                    quality.get((row["bucket_start"], row["is_total"]), {}), supported=coverage
+                )
+            )
             driving_rows.append(data)
         result: DrivingStats | ChargingStats = DrivingStats(
             buckets=[DrivingBucket(**row) for row in driving_rows if not row["is_total"]],
             totals=DrivingMetrics(**driving_rows[-1]),
+            query=DrivingQueryEcho(
+                vehicle_id=vehicle.id,
+                from_=params.from_,
+                to=params.to,
+                tz=params.tz,
+                bucket=params.bucket,
+            ),
+            as_of=now,
+            range_kind=quality_rows[0]["range_kind"] if quality_rows else None,
         )
     else:
         result = ChargingStats(
@@ -247,9 +294,5 @@ async def statistics(
         request,
         result.model_dump_json(by_alias=True).encode(),
         ttl=30,
-        validator_body=(
-            result.model_dump_json(by_alias=True, exclude={"as_of"}).encode()
-            if not driving
-            else None
-        ),
+        validator_body=result.model_dump_json(by_alias=True, exclude={"as_of"}).encode(),
     )

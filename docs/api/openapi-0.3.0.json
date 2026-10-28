@@ -1435,6 +1435,86 @@
         "title": "ChargingStats",
         "type": "object"
       },
+      "ComparisonQuality": {
+        "properties": {
+          "distance_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Coverage"
+          },
+          "eligible_drives": {
+            "title": "Eligible Drives",
+            "type": "integer"
+          },
+          "invalid_distance_drives": {
+            "title": "Invalid Distance Drives",
+            "type": "integer"
+          },
+          "method": {
+            "const": "paired-comparison-quality-v1",
+            "default": "paired-comparison-quality-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "sample_status": {
+            "enum": [
+              "adequate",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Sample Status",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "unknown_distance_drives": {
+            "title": "Unknown Distance Drives",
+            "type": "integer"
+          },
+          "validation": {
+            "const": "provisional",
+            "default": "provisional",
+            "title": "Validation",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "sample_status",
+          "distance_coverage",
+          "eligible_drives",
+          "unknown_distance_drives",
+          "invalid_distance_drives"
+        ],
+        "title": "ComparisonQuality",
+        "type": "object"
+      },
       "Credentials": {
         "properties": {
           "password": {
@@ -1921,6 +2001,9 @@
             "title": "Bucket Start",
             "type": "string"
           },
+          "comparison_quality": {
+            "$ref": "#/components/schemas/ComparisonQuality"
+          },
           "consumption_wh_km_gross": {
             "anyOf": [
               {
@@ -1951,6 +2034,9 @@
             "title": "Drives",
             "type": "integer"
           },
+          "driving_coverage": {
+            "$ref": "#/components/schemas/DrivingCoverage"
+          },
           "energy_kwh": {
             "anyOf": [
               {
@@ -1961,6 +2047,9 @@
               }
             ],
             "title": "Energy Kwh"
+          },
+          "net_consumption_paired": {
+            "$ref": "#/components/schemas/PairedNetConsumption"
           },
           "speed_max_kmh": {
             "anyOf": [
@@ -1981,13 +2070,140 @@
           "consumption_wh_km_net",
           "consumption_wh_km_gross",
           "speed_max_kmh",
+          "driving_coverage",
+          "net_consumption_paired",
+          "comparison_quality",
           "bucket_start"
         ],
         "title": "DrivingBucket",
         "type": "object"
       },
+      "DrivingCoverage": {
+        "properties": {
+          "completed_drives": {
+            "title": "Completed Drives",
+            "type": "integer"
+          },
+          "distance": {
+            "$ref": "#/components/schemas/MetricCoverage"
+          },
+          "distance_known_drives": {
+            "title": "Distance Known Drives",
+            "type": "integer"
+          },
+          "distance_known_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Known Km"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/MetricCoverage"
+          },
+          "duration_known_drives": {
+            "title": "Duration Known Drives",
+            "type": "integer"
+          },
+          "duration_known_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Known Min"
+          },
+          "excluded_by_reason": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Excluded By Reason",
+            "type": "object"
+          },
+          "method": {
+            "const": "driving-coverage-v1",
+            "default": "driving-coverage-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "net_energy": {
+            "$ref": "#/components/schemas/MetricCoverage"
+          },
+          "net_energy_known_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Energy Known Distance Km"
+          },
+          "net_energy_known_drives": {
+            "title": "Net Energy Known Drives",
+            "type": "integer"
+          },
+          "ongoing_drives": {
+            "title": "Ongoing Drives",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "completed_drives",
+          "ongoing_drives",
+          "distance_known_drives",
+          "distance_known_km",
+          "net_energy_known_drives",
+          "net_energy_known_distance_km",
+          "duration_known_drives",
+          "duration_known_min",
+          "distance",
+          "net_energy",
+          "duration",
+          "excluded_by_reason"
+        ],
+        "title": "DrivingCoverage",
+        "type": "object"
+      },
       "DrivingMetrics": {
         "properties": {
+          "comparison_quality": {
+            "$ref": "#/components/schemas/ComparisonQuality"
+          },
           "consumption_wh_km_gross": {
             "anyOf": [
               {
@@ -2018,6 +2234,9 @@
             "title": "Drives",
             "type": "integer"
           },
+          "driving_coverage": {
+            "$ref": "#/components/schemas/DrivingCoverage"
+          },
           "energy_kwh": {
             "anyOf": [
               {
@@ -2028,6 +2247,9 @@
               }
             ],
             "title": "Energy Kwh"
+          },
+          "net_consumption_paired": {
+            "$ref": "#/components/schemas/PairedNetConsumption"
           },
           "speed_max_kmh": {
             "anyOf": [
@@ -2047,13 +2269,75 @@
           "energy_kwh",
           "consumption_wh_km_net",
           "consumption_wh_km_gross",
-          "speed_max_kmh"
+          "speed_max_kmh",
+          "driving_coverage",
+          "net_consumption_paired",
+          "comparison_quality"
         ],
         "title": "DrivingMetrics",
         "type": "object"
       },
+      "DrivingQueryEcho": {
+        "properties": {
+          "bucket": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "year"
+            ],
+            "title": "Bucket",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "time_basis": {
+            "const": "started_at",
+            "default": "started_at",
+            "title": "Time Basis",
+            "type": "string"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "vehicle_id": {
+            "title": "Vehicle Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "from",
+          "to",
+          "tz",
+          "bucket"
+        ],
+        "title": "DrivingQueryEcho",
+        "type": "object"
+      },
       "DrivingStats": {
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
           "buckets": {
             "items": {
               "$ref": "#/components/schemas/DrivingBucket"
@@ -2061,13 +2345,34 @@
             "title": "Buckets",
             "type": "array"
           },
+          "query": {
+            "$ref": "#/components/schemas/DrivingQueryEcho"
+          },
+          "range_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rated",
+                  "ideal"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Kind"
+          },
           "totals": {
             "$ref": "#/components/schemas/DrivingMetrics"
           }
         },
         "required": [
           "buckets",
-          "totals"
+          "totals",
+          "query",
+          "as_of",
+          "range_kind"
         ],
         "title": "DrivingStats",
         "type": "object"
@@ -2378,6 +2683,182 @@
           "freshness"
         ],
         "title": "Meta",
+        "type": "object"
+      },
+      "MetricCoverage": {
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "candidate_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Distance Km"
+          },
+          "candidate_duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Duration Min"
+          },
+          "excluded_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Reason",
+            "type": "object"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "unknown_distance_count": {
+            "title": "Unknown Distance Count",
+            "type": "integer"
+          },
+          "unknown_duration_count": {
+            "title": "Unknown Duration Count",
+            "type": "integer"
+          },
+          "valid_count": {
+            "title": "Valid Count",
+            "type": "integer"
+          },
+          "valid_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Distance Km"
+          },
+          "valid_duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Duration Min"
+          }
+        },
+        "required": [
+          "candidate_count",
+          "valid_count",
+          "excluded_count",
+          "candidate_distance_km",
+          "valid_distance_km",
+          "candidate_duration_min",
+          "valid_duration_min",
+          "unknown_distance_count",
+          "unknown_duration_count",
+          "excluded_by_reason"
+        ],
+        "title": "MetricCoverage",
+        "type": "object"
+      },
+      "PairedNetConsumption": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/MetricCoverage"
+          },
+          "denominator_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator Distance Km"
+          },
+          "eligible_drives": {
+            "title": "Eligible Drives",
+            "type": "integer"
+          },
+          "excluded_drives": {
+            "title": "Excluded Drives",
+            "type": "integer"
+          },
+          "method": {
+            "const": "paired-net-consumption-v1",
+            "default": "paired-net-consumption-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "numerator_energy_kwh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numerator Energy Kwh"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "value_wh_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Wh Km"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "value_wh_km",
+          "numerator_energy_kwh",
+          "denominator_distance_km",
+          "eligible_drives",
+          "excluded_drives",
+          "coverage"
+        ],
+        "title": "PairedNetConsumption",
         "type": "object"
       },
       "PeriodMetrics": {
