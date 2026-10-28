@@ -163,8 +163,8 @@ async def drive_list(
     key = drive_cursor_key(params)
 
     async def render() -> bytes:
-        source, args = match_source(params, vehicle.id, source=DRIVE_SOURCE)
         async with pool.acquire() as db:
+            source, args = match_source(params, vehicle.id, source=DRIVE_SOURCE)
             count = await fetch_rows(db, f"SELECT count(*) AS count FROM ({source}) matched", *args)
             # fetch_page accepts the original time/id key; expose only query-bound cursors.
             legacy_cursor = None

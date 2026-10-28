@@ -1,5 +1,10 @@
 """Public driving evidence contracts against the isolated TeslaMate fixture."""
 
+import json
+from pathlib import Path
+
+import pytest
+
 BOUNDS = {"from": "2025-06-01T00:00:00Z", "to": "2025-07-01T00:00:00Z"}
 
 
@@ -184,3 +189,13 @@ async def test_driving_evidence_openapi_declares_filters_and_echo(client):
         assert name in params
     page = schema["components"]["schemas"]["DrivePage"]
     assert {"query", "as_of", "matched_drives"} <= set(page["required"])
+    frozen = json.loads((Path(__file__).parents[1] / "docs/api/openapi-0.3.0.json").read_text())
+    assert schema == frozen
+
+
+async def test_match_source_columns_stay_covered_by_the_required_probe(db, app):
+    """The match rules add no optional column, so a missing source fails startup loudly."""
+    await db.execute("ALTER TABLE drives DROP COLUMN distance")
+    with pytest.raises(RuntimeError, match=r"drives\.distance \(expected float8\)"):
+        async with app.router.lifespan_context(app):
+            pass

@@ -20,6 +20,10 @@ from mileaf.queries.time import validate_timezone
 
 DRIVING_MATCH_METHOD: Literal["driving-match-v1"] = "driving-match-v1"
 
+# The match rules read only columns the published 0.1/0.2 startup probe already
+# requires (drives.distance, drives.outside_temp_avg and the energy sources), so
+# this slice adds no optional column and cannot degrade to unsupported.
+
 
 class DrivingFilters(BaseModel):
     distance_min_km: float | None = None
