@@ -1450,6 +1450,137 @@
         "title": "Credentials",
         "type": "object"
       },
+      "DistanceBin": {
+        "properties": {
+          "consumption_wh_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumption Wh Km"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/DistanceBinCoverage"
+          },
+          "distance_km": {
+            "title": "Distance Km",
+            "type": "number"
+          },
+          "drives": {
+            "title": "Drives",
+            "type": "integer"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "evidence_filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lower_km": {
+            "title": "Lower Km",
+            "type": "number"
+          },
+          "paired_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paired Distance Km"
+          },
+          "paired_energy_kwh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paired Energy Kwh"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "upper_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exclusive upper bound in km; null is unbounded",
+            "title": "Upper Km"
+          }
+        },
+        "required": [
+          "lower_km",
+          "upper_km",
+          "drives",
+          "distance_km",
+          "duration_min",
+          "paired_energy_kwh",
+          "paired_distance_km",
+          "consumption_wh_km",
+          "status",
+          "coverage",
+          "evidence_filter"
+        ],
+        "title": "DistanceBin",
+        "type": "object"
+      },
+      "DistanceBinCoverage": {
+        "properties": {
+          "distance": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "paired": {
+            "$ref": "#/components/schemas/SetCoverage"
+          }
+        },
+        "required": [
+          "distance",
+          "duration",
+          "paired"
+        ],
+        "title": "DistanceBinCoverage",
+        "type": "object"
+      },
       "Drive": {
         "properties": {
           "consumption_wh_km": {
@@ -1698,6 +1829,108 @@
           "range_kind"
         ],
         "title": "DriveDetail",
+        "type": "object"
+      },
+      "DriveEvidenceFilter": {
+        "description": "Query parameters accepted verbatim by GET /v1/vehicles/{id}/drives.",
+        "properties": {
+          "completed_only": {
+            "const": true,
+            "default": true,
+            "title": "Completed Only",
+            "type": "boolean"
+          },
+          "distance_max_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Max Km"
+          },
+          "distance_min_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Min Km"
+          },
+          "energy_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Status"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "method": {
+            "const": "driving-match-v1",
+            "default": "driving-match-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "outside_temp_max_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Temp Max C"
+          },
+          "outside_temp_min_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Temp Min C"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "tz"
+        ],
+        "title": "DriveEvidenceFilter",
         "type": "object"
       },
       "DriveLocation": {
@@ -1955,6 +2188,191 @@
           "series"
         ],
         "title": "DriveSeries",
+        "type": "object"
+      },
+      "DrivingAnalysisUsage": {
+        "properties": {
+          "active_days": {
+            "title": "Active Days",
+            "type": "integer"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/UsageCoverage"
+          },
+          "distance_bins": {
+            "items": {
+              "$ref": "#/components/schemas/DistanceBin"
+            },
+            "title": "Distance Bins",
+            "type": "array"
+          },
+          "distance_p50_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance P50 Km"
+          },
+          "distance_p90_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance P90 Km"
+          },
+          "distance_per_active_day_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Per Active Day Km"
+          },
+          "driving_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driving Distance Km"
+          },
+          "driving_duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driving Duration Min"
+          },
+          "duration_p50_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration P50 Min"
+          },
+          "duration_p90_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration P90 Min"
+          },
+          "mean_speed_kmh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Speed Kmh"
+          },
+          "method": {
+            "const": "usage-distribution-v1",
+            "default": "usage-distribution-v1",
+            "title": "Method",
+            "type": "string"
+          },
+          "partial_today": {
+            "title": "Partial Today",
+            "type": "boolean"
+          },
+          "query": {
+            "$ref": "#/components/schemas/DrivingQueryEcho"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "validation": {
+            "const": "provisional",
+            "default": "provisional",
+            "title": "Validation",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "view": {
+            "const": "usage",
+            "default": "usage",
+            "title": "View",
+            "type": "string"
+          },
+          "weekday_bins": {
+            "items": {
+              "$ref": "#/components/schemas/WeekdayBin"
+            },
+            "title": "Weekday Bins",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "query",
+          "as_of",
+          "active_days",
+          "partial_today",
+          "driving_distance_km",
+          "driving_duration_min",
+          "distance_per_active_day_km",
+          "mean_speed_kmh",
+          "distance_p50_km",
+          "distance_p90_km",
+          "duration_p50_min",
+          "duration_p90_min",
+          "coverage",
+          "distance_bins",
+          "weekday_bins"
+        ],
+        "title": "DrivingAnalysisUsage",
         "type": "object"
       },
       "DrivingBucket": {
@@ -2664,6 +3082,38 @@
         "title": "ProcessMetrics",
         "type": "object"
       },
+      "SetCoverage": {
+        "description": "One valid set: candidates, valid inputs and additive exclusion reasons.",
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "excluded_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Reason",
+            "type": "object"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "valid_count": {
+            "title": "Valid Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidate_count",
+          "valid_count",
+          "excluded_count",
+          "excluded_by_reason"
+        ],
+        "title": "SetCoverage",
+        "type": "object"
+      },
       "SocWindow": {
         "properties": {
           "elapsed_seconds": {
@@ -3083,6 +3533,35 @@
         "title": "UnitCost",
         "type": "object"
       },
+      "UsageCoverage": {
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "distance": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "paired": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "speed": {
+            "$ref": "#/components/schemas/SetCoverage"
+          }
+        },
+        "required": [
+          "candidate_count",
+          "distance",
+          "duration",
+          "speed",
+          "paired"
+        ],
+        "title": "UsageCoverage",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3231,6 +3710,80 @@
           "vin_suffix"
         ],
         "title": "VehicleIdentity",
+        "type": "object"
+      },
+      "WeekdayBin": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/WeekdayBinCoverage"
+          },
+          "distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Km"
+          },
+          "drives": {
+            "title": "Drives",
+            "type": "integer"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "no_records",
+              "insufficient_data",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "weekday": {
+            "description": "ISO weekday of the local started_at, Monday=1 .. Sunday=7",
+            "title": "Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weekday",
+          "drives",
+          "distance_km",
+          "duration_min",
+          "status",
+          "coverage"
+        ],
+        "title": "WeekdayBin",
+        "type": "object"
+      },
+      "WeekdayBinCoverage": {
+        "properties": {
+          "distance": {
+            "$ref": "#/components/schemas/SetCoverage"
+          },
+          "duration": {
+            "$ref": "#/components/schemas/SetCoverage"
+          }
+        },
+        "required": [
+          "distance",
+          "duration"
+        ],
+        "title": "WeekdayBinCoverage",
         "type": "object"
       }
     },
@@ -4281,6 +4834,175 @@
         "summary": "Drive List",
         "tags": [
           "drives"
+        ]
+      }
+    },
+    "/v1/vehicles/{vehicle_id}/driving-analysis": {
+      "get": {
+        "operationId": "driving_analysis_v1_vehicles__vehicle_id__driving_analysis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_id",
+            "required": true,
+            "schema": {
+              "title": "Vehicle Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": true,
+            "schema": {
+              "const": "usage",
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "title": "Tz",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_min_km",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Distance Min Km"
+            }
+          },
+          {
+            "in": "query",
+            "name": "distance_max_km",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Distance Max Km"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outside_temp_min_c",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outside Temp Min C"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outside_temp_max_c",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outside Temp Max C"
+            }
+          },
+          {
+            "in": "query",
+            "name": "energy_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "known",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Energy Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrivingAnalysisUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Driving Analysis",
+        "tags": [
+          "driving analysis"
         ]
       }
     },

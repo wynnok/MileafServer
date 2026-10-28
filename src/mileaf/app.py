@@ -21,6 +21,7 @@ from mileaf.charging_sessions import router as charging_sessions_router
 from mileaf.config import Settings
 from mileaf.database import create_pool
 from mileaf.drives import router as drives_router
+from mileaf.driving_analysis import router as driving_analysis_router
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
 from mileaf.meta import router as meta_router
@@ -39,6 +40,7 @@ ROUTERS = [
     vehicles_router,
     stats_router,
     drives_router,
+    driving_analysis_router,
     charging_sessions_router,
     charging_locations_router,
     summary_router,
