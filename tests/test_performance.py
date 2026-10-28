@@ -107,6 +107,10 @@ async def test_endpoint_performance(
         elif endpoint == "stats":
             assert len(body["buckets"]) == 12
             assert body["totals"]["drives"] == 20_000
+            # The second, coverage aggregate keeps the same match set at fixture scale.
+            assert body["totals"]["driving_coverage"]["completed_drives"] == 20_000
+            assert body["totals"]["net_consumption_paired"]["eligible_drives"] == 20_000
+            assert body["totals"]["comparison_quality"]["sample_status"] == "adequate"
         else:
             assert body["vehicle"]["id"] == performance_seed
             assert body["battery"] is not None

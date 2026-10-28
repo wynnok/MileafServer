@@ -22,7 +22,7 @@ from mileaf.queries.time import validate_timezone
 
 USAGE_METHOD: Literal["usage-distribution-v1"] = "usage-distribution-v1"
 AnalysisStatus = Literal["available", "no_records", "insufficient_data", "unsupported"]
-AnalysisView = Literal["usage"]
+AnalysisView = Literal["usage", "conditions"]
 
 # Fixed [0,10) / [10,50) / [50,+inf) km groups: three bins, never data derived.
 DISTANCE_BIN_EDGES_KM: tuple[float, ...] = (10.0, 50.0)
@@ -311,3 +311,33 @@ def usage_groups_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str,
         "FROM scoped GROUP BY GROUPING SETS ((distance_bin), (weekday))"
     )
     return sql, args
+
+
+def temperature_groups_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str, list[Any]]:
+    scoped, args = scoped_sql(query, vehicle_id)
+    aggregates = ", ".join(
+        [
+            "count(*) AS drives",
+            *[f"count(*) FILTER (WHERE valid_{name}) AS {name}_valid_count" for name in USAGE_SETS],
+            "sum(distance) FILTER (WHERE valid_distance) AS distance_sum_km",
+            "sum(duration_min) FILTER (WHERE valid_duration) AS duration_sum_min",
+            "sum(distance) FILTER (WHERE valid_paired) AS paired_distance_km",
+            "sum(energy_kwh) FILTER (WHERE valid_paired) AS paired_energy_kwh",
+            "sum(energy_kwh) FILTER (WHERE valid_paired)*1000 / nullif(sum(distance) "
+            "FILTER (WHERE valid_paired),0) AS consumption_wh_km",
+            "sum(distance) FILTER (WHERE valid_speed)*60 / nullif(sum(duration_min) "
+            "FILTER (WHERE valid_speed),0) AS mean_trip_speed_kmh",
+            "percentile_cont(0.5) WITHIN GROUP (ORDER BY distance) FILTER (WHERE "
+            "valid_distance) AS median_drive_distance_km",
+            *[
+                reason_counts_sql(steps, f"{name}_reason", f"{name}_reasons")
+                for name, steps in USAGE_SETS.items()
+            ],
+        ]
+    )
+    valid = finite_sql("outside_temp_avg")
+    return (
+        f"{scoped} SELECT CASE WHEN {valid} THEN floor(outside_temp_avg/5)*5 "
+        f"END AS lower_c, {aggregates} FROM scoped GROUP BY 1 ORDER BY 1 NULLS LAST",
+        args,
+    )

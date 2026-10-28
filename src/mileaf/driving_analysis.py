@@ -12,6 +12,7 @@ from starlette.responses import Response
 from mileaf.cache import conditional_response
 from mileaf.database import fetch_rows
 from mileaf.dependencies import get_pool
+from mileaf.errors import APIError, ErrorCode
 from mileaf.queries.driving_analysis import (
     DISTANCE_BIN_COUNT,
     DISTANCE_BIN_EDGES_KM,
@@ -24,6 +25,7 @@ from mileaf.queries.driving_analysis import (
     DrivingAnalysisQuery,
     driving_analysis_parameters,
     reason_names,
+    temperature_groups_sql,
     usage_groups_sql,
     usage_summary_sql,
 )
@@ -275,7 +277,46 @@ def usage_result(
     )
 
 
-@router.get("/vehicles/{vehicle_id}/driving-analysis", response_model=DrivingAnalysisUsage)
+class TemperatureBin(BaseModel):
+    lower_c: float
+    upper_c: float
+    drives: int
+    distance_km: float | None
+    paired_energy_kwh: float | None
+    paired_distance_km: float | None
+    consumption_wh_km: float | None
+    median_drive_distance_km: float | None
+    mean_trip_speed_kmh: float | None
+    coverage: UsageCoverage
+    evidence_filter: dict[str, Any]
+    sample_status: Literal["adequate", "sparse", "insufficient_data"]
+
+
+class DrivingAnalysisConditions(BaseModel):
+    view: Literal["conditions"] = "conditions"
+    status: AnalysisStatus
+    method: Literal["temperature-association-v1"] = "temperature-association-v1"
+    version: int = 1
+    validation: Literal["provisional"] = "provisional"
+    thresholds: dict[str, float] = Field(
+        default_factory=lambda: {
+            "temperature_step_c": 5.0,
+            "minimum_paired_drives": 5.0,
+            "minimum_paired_distance_km": 50.0,
+        }
+    )
+    query: DrivingQueryEcho
+    as_of: datetime
+    summary: DrivingAnalysisUsage
+    temperature_bins: list[TemperatureBin]
+    distance_bins: list[DistanceBin]
+    unknown_temperature_drives: int
+
+
+@router.get(
+    "/vehicles/{vehicle_id}/driving-analysis",
+    response_model=DrivingAnalysisUsage | DrivingAnalysisConditions,
+)
 async def driving_analysis(
     request: Request,
     vehicle: Annotated[VehicleIdentity, Depends(get_vehicle_or_404)],
@@ -287,13 +328,90 @@ async def driving_analysis(
     )
     summary: dict[str, Any] | None = None
     groups: list[dict[str, Any]] = []
+    temperatures: list[dict[str, Any]] = []
     if supported:
         summary_sql, summary_args = usage_summary_sql(params, vehicle.id)
         groups_sql, groups_args = usage_groups_sql(params, vehicle.id)
         async with pool.acquire() as db:
             summary = dict((await fetch_rows(db, summary_sql, *summary_args))[0])
-            groups = [dict(group) for group in await fetch_rows(db, groups_sql, *groups_args)]
-    result = usage_result(params, summary, groups, supported=supported)
+            if params.view == "conditions":
+                temp_sql, temp_args = temperature_groups_sql(params, vehicle.id)
+                combined = await fetch_rows(
+                    db,
+                    "SELECT (SELECT jsonb_agg(g) FROM ("
+                    + groups_sql
+                    + ") g) AS groups, (SELECT jsonb_agg(t) FROM ("
+                    + temp_sql
+                    + ") t) AS temperatures",
+                    *temp_args,
+                )
+                groups = json.loads(combined[0]["groups"] or "[]")
+                temperatures = json.loads(combined[0]["temperatures"] or "[]")
+                for row in groups + temperatures:
+                    for name in USAGE_SETS:
+                        row[f"{name}_reasons"] = json.dumps(row[f"{name}_reasons"])
+            else:
+                groups = [dict(group) for group in await fetch_rows(db, groups_sql, *groups_args)]
+    result: DrivingAnalysisUsage | DrivingAnalysisConditions = usage_result(
+        params, summary, groups, supported=supported
+    )
+    if params.view == "conditions":
+        bins = []
+        unknown = 0
+        for row in temperatures:
+            count = int(row["drives"])
+            if row["lower_c"] is None:
+                unknown += count
+                continue
+            lower = float(row["lower_c"])
+            filters = params.echo.filters.model_dump(exclude_none=True)
+            filters["outside_temp_min_c"] = max(lower, filters.get("outside_temp_min_c", lower))
+            filters["outside_temp_max_c"] = min(
+                lower + 5, filters.get("outside_temp_max_c", lower + 5)
+            )
+            evidence = {
+                "from": params.start.isoformat(),
+                "to": params.end.isoformat(),
+                "tz": params.echo.tz,
+                **filters,
+            }
+            valid = int(row["paired_valid_count"])
+            bins.append(
+                TemperatureBin(
+                    lower_c=lower,
+                    upper_c=lower + 5,
+                    drives=count,
+                    distance_km=row["distance_sum_km"],
+                    paired_energy_kwh=row["paired_energy_kwh"],
+                    paired_distance_km=row["paired_distance_km"],
+                    consumption_wh_km=row["consumption_wh_km"],
+                    median_drive_distance_km=row["median_drive_distance_km"],
+                    mean_trip_speed_kmh=row["mean_trip_speed_kmh"],
+                    coverage=UsageCoverage(
+                        candidate_count=count,
+                        **{name: set_coverage(row, name, count) for name in USAGE_SETS},
+                    ),
+                    evidence_filter=evidence,
+                    sample_status="adequate"
+                    if valid >= 5 and row["paired_distance_km"] >= 50
+                    else "sparse"
+                    if valid
+                    else "insufficient_data",
+                )
+            )
+        if len(bins) > 100:
+            raise APIError(
+                400, ErrorCode.INVALID_REQUEST, "Too many temperature groups; narrow the range"
+            )
+        result = DrivingAnalysisConditions(
+            status=result.status,
+            query=params.echo,
+            as_of=params.as_of,
+            summary=result,
+            temperature_bins=bins,
+            distance_bins=result.distance_bins,
+            unknown_temperature_drives=unknown,
+        )
     return conditional_response(
         request,
         result.model_dump_json(by_alias=True).encode(),

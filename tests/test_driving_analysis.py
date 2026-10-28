@@ -81,8 +81,6 @@ async def test_usage_requires_an_explicit_bounded_window_and_a_supported_view(cl
         {"view": "usage"},
         {"view": "usage", "from": base["from"]},
         {"view": "usage", "to": base["to"]},
-        # conditions is owned by #38; the declared view enum stays accurate until then.
-        {"view": "conditions", **base},
         {"view": "usage", **base, "from": "2025-06-01"},
         {"view": "usage", **base, "from": base["to"], "to": base["from"]},
         {"view": "usage", "from": "2023-06-01T00:00:00Z", "to": "2025-06-01T00:00:00Z"},
@@ -503,9 +501,12 @@ async def test_driving_analysis_openapi_limits_the_declared_view(client):
     schema = (await client.get("/openapi.json")).json()
     operation = schema["paths"]["/v1/vehicles/{vehicle_id}/driving-analysis"]["get"]
     params = {row["name"]: row for row in operation["parameters"]}
-    # conditions arrives with #38; until then the published enum must not promise it.
     assert params["view"]["required"] is True
-    assert params["view"]["schema"] == {"const": "usage", "type": "string", "title": "View"}
+    assert params["view"]["schema"] == {
+        "enum": ["usage", "conditions"],
+        "type": "string",
+        "title": "View",
+    }
     assert params["from"]["required"] is True
     assert params["to"]["required"] is True
     assert params["tz"]["schema"]["default"] == "UTC"
