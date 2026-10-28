@@ -155,4 +155,4 @@ async def test_seed_car_helper_adds_local_vehicle_without_converting_storage(
 async def test_health_client_uses_real_database(health_client) -> None:
     response = await health_client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "0.2.0"}
+    assert response.json() == {"status": "ok", "version": "0.3.0"}

@@ -321,7 +321,8 @@ AC/DC 分类复用上面的 phases 众数规则；未知分类只计入次数与
 状态：Implemented locally（隔离测试及审查通过，未推送/部署）；维护者确认见 spec [#29](https://github.com/wynnok/MileafServer/issues/29)，
 实施 #30–#33；完整定义见 [增量 spec](../product/charging-experience-spec.md)。
 设计交接原文保留为提案，不作为已实现契约。
-冻结契约为 [openapi-0.2.0.json](openapi-0.2.0.json)，运行中的 `/openapi.json` 与之对应。
+冻结契约为 [openapi-0.2.0.json](openapi-0.2.0.json)，是充电增量的发布快照；
+运行时契约自统计洞察增量起冻结为 [openapi-0.3.0.json](openapi-0.3.0.json)，只做加法。
 
 ### 共用查询与分页
 
@@ -429,3 +430,13 @@ tested_schema_version 和每字段 fields 支持布尔值。最低服务端 0.2.
 20260808090000。仅新增源列是可选能力，缺列或类型不兼容不阻断服务，字段返回 null；
 历史无值时即使支持也仍返回 null。现有必需列缺失继续拒绝启动；支持状态在重启后刷新。
 不宣称其他 TeslaMate 版本已通过验证。#28 Grafana 生产口径验收仍须人工完成。
+
+## 统计洞察增量（0.3.0 / statistics-insights-v1）
+
+状态：In progress。规格见 [#34](https://github.com/wynnok/MileafServer/issues/34)，实施工单 #35–#41；
+设计交接原文保留为 [提案](../mobile-api-proposals/statistics-insights.md)，不作为已实现契约。
+`meta.statistics_insights` 独立声明 contract_version `statistics-insights-v1`、最低服务端 0.3.0、
+tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_analysis`、
+`range_observations`、`parking_observations` 的支持布尔值；不复用 `charging-experience-v1` 的版本号。
+新增源列按功能探测，缺列时对应功能为 `unsupported`，不阻断启动、不影响 0.1/0.2 已发布字段。
+各接口的字段、单位、方法与阈值说明随对应工单交付，最终冻结与验收见 #41。

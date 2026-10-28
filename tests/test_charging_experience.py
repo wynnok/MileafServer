@@ -424,12 +424,17 @@ async def test_frozen_openapi_exposes_charging_contract(client):
     from pathlib import Path
 
     schema = (await client.get("/openapi.json")).json()
-    frozen = Path(__file__).parents[1] / "docs/api/openapi-0.2.0.json"
+    api = Path(__file__).parents[1] / "docs/api"
+    frozen = api / "openapi-0.3.0.json"
     assert schema == json.loads(frozen.read_text())
-    assert schema["info"]["version"] == "0.2.0"
+    assert schema["info"]["version"] == "0.3.0"
     assert "/v1/vehicles/{vehicle_id}/charging-locations" in schema["paths"]
     echo = schema["components"]["schemas"]["ChargingQueryEcho"]["properties"]
     assert "from" in echo and "from_" not in echo
+    # The 0.2.0 freeze stays on disk as the released surface; 0.3.0 is additive only.
+    previous = json.loads((api / "openapi-0.2.0.json").read_text())
+    assert set(previous["paths"]) <= set(schema["paths"])
+    assert set(previous["components"]["schemas"]) <= set(schema["components"]["schemas"])
 
 
 async def test_location_openapi_matches_required_range_and_default_sort(client):

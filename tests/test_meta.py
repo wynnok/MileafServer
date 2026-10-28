@@ -18,8 +18,14 @@ async def test_meta_contract(client):
     body = response.json()
     assert body["charging_experience"]["contract_version"] == "charging-experience-v1"
     assert all(body["charging_experience"]["fields"].values())
-    assert {key: value for key, value in body.items() if key != "charging_experience"} == {
-        "version": "0.2.0",
+    assert body["statistics_insights"]["contract_version"] == "statistics-insights-v1"
+    assert body["statistics_insights"]["minimum_server_version"] == "0.3.0"
+    assert {
+        key: value
+        for key, value in body.items()
+        if key not in {"charging_experience", "statistics_insights"}
+    } == {
+        "version": "0.3.0",
         "teslamate_schema_version": 20260808090000,
         "schema_ok": True,
         "tested": True,
