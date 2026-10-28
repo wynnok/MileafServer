@@ -354,7 +354,12 @@ async def charging_session_series(
                 sampling_rule="first-field-extrema-then-multifield-lttb-v1",
                 **events,
             )
-            .model_dump_json(exclude_unset=True)
+            .model_dump_json(
+                exclude={
+                    "series": {"__all__": set(SAMPLE_FIELDS) - set(requested)},
+                    **({"state_events": True} if not events else {}),
+                }
+            )
             .encode()
         )
 

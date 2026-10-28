@@ -318,7 +318,7 @@ AC/DC 分类复用上面的 phases 众数规则；未知分类只计入次数与
 
 ## 充电体验增量（0.2.0 / charging-experience-v1）
 
-状态：Accepted；维护者确认见 spec [#29](https://github.com/wynnok/MileafServer/issues/29)，
+状态：Implemented locally（隔离测试及审查通过，未推送/部署）；维护者确认见 spec [#29](https://github.com/wynnok/MileafServer/issues/29)，
 实施 #30–#33；完整定义见 [增量 spec](../product/charging-experience-spec.md)。
 设计交接原文保留为提案，不作为已实现契约。
 冻结契约为 [openapi-0.2.0.json](openapi-0.2.0.json)，运行中的 `/openapi.json` 与之对应。

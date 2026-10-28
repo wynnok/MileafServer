@@ -17,7 +17,7 @@ from mileaf.queries.charging_metrics import ChargingMetrics, charging_metrics_sq
 from mileaf.queries.charging_query import (
     ChargingQuery,
     ChargingQueryEcho,
-    charging_parameters,
+    charging_location_parameters,
     decode_bound_cursor,
     encode_bound_cursor,
     invalid,
@@ -51,7 +51,7 @@ class ChargingLocationPage(BaseModel):
 async def charging_locations(
     request: Request,
     vehicle: Annotated[VehicleIdentity, Depends(get_vehicle_or_404)],
-    params: Annotated[ChargingQuery, Depends(charging_parameters)],
+    params: Annotated[ChargingQuery, Depends(charging_location_parameters)],
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
 ) -> Response:
     binding = params.binding(vehicle.id, view="locations")

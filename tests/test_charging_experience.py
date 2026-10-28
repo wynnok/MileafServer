@@ -202,6 +202,11 @@ async def test_extended_series_and_discrete_state_events(client, db):
     assert body["state_events"]["total_events"] == 61
     assert len(body["state_events"]["events"]) == 61
     assert body["state_events"]["truncated"] is False
+    assert body["state_events"]["limit"] == 1000
+    assert body["state_events"]["rule_version"] == "raw-transitions-v1"
+    assert body["capabilities"]["contract_version"] == "charging-experience-v1"
+    assert body["capabilities"]["minimum_server_version"] == "0.2.0"
+    assert body["capabilities"]["tested_schema_version"] == 20260808090000
     assert body["capabilities"]["fields"]["voltage_v"] is True
     detail = (await client.get("/v1/charging-sessions/2")).json()
     assert detail["start_rated_range_km"] == 200
@@ -425,3 +430,32 @@ async def test_frozen_openapi_exposes_charging_contract(client):
     assert "/v1/vehicles/{vehicle_id}/charging-locations" in schema["paths"]
     echo = schema["components"]["schemas"]["ChargingQueryEcho"]["properties"]
     assert "from" in echo and "from_" not in echo
+
+
+async def test_location_openapi_matches_required_range_and_default_sort(client):
+    schema = (await client.get("/openapi.json")).json()
+    parameters = schema["paths"]["/v1/vehicles/{vehicle_id}/charging-locations"]["get"][
+        "parameters"
+    ]
+    queries = {
+        parameter["name"]: parameter for parameter in parameters if parameter["in"] == "query"
+    }
+    assert queries["from"]["required"] and queries["to"]["required"]
+    assert queries["sort"]["schema"]["default"] == "energy_desc"
+    assert queries["sort"]["schema"]["enum"] == ["energy_desc", "sessions_desc"]
+
+
+@pytest.mark.parametrize("timestamp", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00"])
+async def test_overflowing_cursor_timestamp_is_a_client_error(client, timestamp):
+    import base64
+    import json
+
+    params = {"limit": 1}
+    page = (await client.get(LIST, params=params)).json()
+    cursor = page["next_cursor"]
+    payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+    payload[2][1] = timestamp
+    changed = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    response = await client.get(LIST, params={**params, "cursor": changed})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"

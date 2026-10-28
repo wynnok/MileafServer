@@ -220,5 +220,38 @@ def session_cursor_key(
         if type(identifier) is not int or not 0 < identifier <= 2147483647:
             raise ValueError
         return number, time.astimezone(UTC), identifier
-    except (ValueError, TypeError, InvalidOperation):
+    except (ValueError, TypeError, OverflowError, InvalidOperation):
         raise invalid("Invalid cursor key") from None
+
+
+def charging_location_parameters(
+    request: Request,
+    now: Annotated[datetime, Depends(get_now)],
+    from_: Annotated[str, Query(alias="from")],
+    to: str,
+    tz: str = "UTC",
+    time_basis: TimeBasis = "ended_at",
+    charging_type: Literal["ac", "dc", "unknown"] | None = None,
+    location_id: str | None = None,
+    query: str | None = None,
+    cost_status: Literal["known", "unknown", "zero"] | None = None,
+    sort: Literal["energy_desc", "sessions_desc"] = "energy_desc",
+    cursor: str | None = None,
+    limit: str = "20",
+) -> ChargingQuery:
+    """Declare this endpoint's required bounds and defaults in its OpenAPI contract."""
+    return charging_parameters(
+        request=request,
+        now=now,
+        from_=from_,
+        to=to,
+        tz=tz,
+        time_basis=time_basis,
+        charging_type=charging_type,
+        location_id=location_id,
+        query=query,
+        cost_status=cost_status,
+        sort=sort,
+        cursor=cursor,
+        limit=limit,
+    )

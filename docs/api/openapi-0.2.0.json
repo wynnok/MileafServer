@@ -3459,33 +3459,19 @@
           {
             "in": "query",
             "name": "from",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "From"
+              "title": "From",
+              "type": "string"
             }
           },
           {
             "in": "query",
             "name": "to",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "To"
+              "title": "To",
+              "type": "string"
             }
           },
           {
@@ -3503,19 +3489,13 @@
             "name": "time_basis",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "started_at",
-                    "ended_at"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
+              "default": "ended_at",
+              "enum": [
+                "started_at",
+                "ended_at"
               ],
-              "title": "Time Basis"
+              "title": "Time Basis",
+              "type": "string"
             }
           },
           {
@@ -3597,7 +3577,11 @@
             "name": "sort",
             "required": false,
             "schema": {
-              "default": "started_desc",
+              "default": "energy_desc",
+              "enum": [
+                "energy_desc",
+                "sessions_desc"
+              ],
               "title": "Sort",
               "type": "string"
             }

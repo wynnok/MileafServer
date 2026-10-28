@@ -124,3 +124,13 @@ stats追加同一`time_basis`与所有筛选参数，省略保留当前ended_at�
 7. 原始序列预算、查询成本、Bearer/车辆归属、404、ETag/304、统一错误与扩展能力缺失；不拉取无界全历史点给手机。
 
 交付时请提供更新OpenAPI、具体源字段/计算定义、能力与版本说明、隔离fixture测试及对账输入。Mobile随后固定新契约，在已确认方案范围接入；本文件不授权推送、部署、数据库写入或关闭真实验收票。
+
+
+## 后续生命周期记录（2026-10-28）
+
+以上原始交接内容保留，文首的待评审/未实现状态描述 2026-10-27 的交接时刻。
+维护者随后确认 CH01–CH05，已由 [spec #29](https://github.com/wynnok/MileafServer/issues/29)
+定稿，并经 #30–#33 完成本地实现、隔离验证及双轴审查；CH06 延后。
+当前契约见 [增量 spec](../product/charging-experience-spec.md)、
+[API 定义](../api/v1-surface.md) 和
+[冻结 OpenAPI 0.2.0](../api/openapi-0.2.0.json)。未推送/部署，#28 真实对账验收仍开放。

@@ -1,7 +1,7 @@
 # 充电体验增量契约
 
 - 日期：2026-10-28
-- 状态：Accepted（2026-10-28 维护者确认 CH01–CH05、四张实施票与 HTTP 测试缝）
+- 状态：Implemented locally（2026-10-28；维护者确认后实现，隔离测试及双轴审查通过；未推送/合并/部署）
 - 输入：`docs/mobile-api-proposals/charging-experience.md`（设计交接，保留原文）
 - 基线：`72710ff6ea5ee2805ed4a9fdea2854b384a44147`；现有 spec #4/#5、实施 #23/#26
 - Tracker：增量 spec [#29](https://github.com/wynnok/MileafServer/issues/29)；实施 [#30](https://github.com/wynnok/MileafServer/issues/30) CH01、[#31](https://github.com/wynnok/MileafServer/issues/31) CH02、[#32](https://github.com/wynnok/MileafServer/issues/32) CH03、[#33](https://github.com/wynnok/MileafServer/issues/33) CH04–CH05。#32 阻塞于 #30/#31；#33 阻塞于 #30。
@@ -92,3 +92,15 @@ CH06、地图簇、运营商目录、费用写入/汇率/分时电价、生产�
 
 - 这是 #4/#5 的增量，不把旧 spec 或已完成实现重新标记为未完成，也不关闭父票。
 - 实施票状态依次 Ready → In progress → Implemented locally；测试和审查证据回链，未推送的提交不冒充已合并代码。
+
+## 验证与交付记录（2026-10-28）
+
+- 维护者确认范围及测试缝后发布 spec #29 和实施 #30–#33，再开始实现；旧 spec #4/#5 用评论记录增量关系，不覆写原口径。
+- 当前分支 `codex/b-wave-implementation`；实现提交 `5b4ddf9`，后续审查修复与本记录一同提交。
+- 最终完整回归：`UV_CACHE_DIR=.cache/uv uv run pytest` → **165 passed, 8 deselected**。
+- 批量分类修复后的充电/分类/统计回归 64 项通过；新增大夹具 slow 单独通过（5000 会话、100000 采样，三个充电查询均未超 5 秒）。未运行其余既有 slow 用例。
+- `ruff check src tests` 与 `mypy` 通过。
+- Standards 初审 1 项：地点 OpenAPI 必填范围/默认排序不符；已补端点声明及 HTTP 断言，复核通过。
+- Spec 初审 2 项：序列嵌套元数据被省略、极端时间游标返回 500；均先复现红灯，再修复并验证，复核通过。两轴无遗留发现。
+- 冻结文件：`docs/api/openapi-0.2.0.json`，SHA-256 `94cab04beb035fbf0b7423b61965138be734034630e91477267fef1f8a7d41ea`；HTTP 测试校验与运行时 OpenAPI 一致。
+- 新增实施票按本地实现完成回填并关闭；父 spec #29 保留开放。#28 真实 Grafana 验收继续独立开放，未推送/部署，不将夹具测试冒充生产对账。
