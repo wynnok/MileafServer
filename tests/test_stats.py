@@ -1,8 +1,17 @@
 """Calendar statistics through the authenticated HTTP seam."""
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
+
+from mileaf.dependencies import get_now
+
+
+@pytest.fixture(autouse=True)
+def charging_clock(app):
+    app.dependency_overrides[get_now] = lambda: datetime(2026, 10, 28, 12, tzinfo=UTC)
+
 
 BASE = "/v1/vehicles/1/stats"
 WINDOW = {
@@ -73,9 +82,9 @@ async def test_empty_buckets_and_charging_counts(client):
                 "dc_energy_share": None,
             }
         )
-        assert body["totals"] == expected
+        assert {key: body["totals"][key] for key in expected} == expected
         for bucket in body["buckets"]:
-            assert bucket == {"bucket_start": bucket["bucket_start"], **expected}
+            assert {key: bucket[key] for key in expected} == expected
     charging = (await client.get(BASE, params={**WINDOW, "kind": "charging"})).json()
     assert charging["totals"]["sessions"] == 8
 
@@ -143,7 +152,7 @@ async def test_charging_metrics_exclude_unknown_cost_from_both_ratio_terms(clien
     assert [b["ac_energy_kwh"] for b in body["buckets"]] == [20, 20, 80]
     assert [b["dc_energy_kwh"] for b in body["buckets"]] == [0, 20, 0]
     assert [b["dc_energy_share"] for b in body["buckets"]] == [0, 0.5, 0]
-    assert body["totals"] == {
+    expected = {
         "sessions": 8,
         "energy_added_kwh": 160,
         "cost": 72,
@@ -152,6 +161,7 @@ async def test_charging_metrics_exclude_unknown_cost_from_both_ratio_terms(clien
         "dc_energy_kwh": 20,
         "dc_energy_share": pytest.approx(1 / 7),
     }
+    assert {key: body["totals"][key] for key in expected} == expected
     for name in ("sessions", "energy_added_kwh", "cost", "ac_energy_kwh", "dc_energy_kwh"):
         assert sum(b[name] for b in body["buckets"]) == body["totals"][name]
     # The no-sample session contributes precisely 20 kWh to the unclassified gap.
@@ -187,14 +197,16 @@ async def test_charging_unknown_and_zero_cost_are_distinct(client, start, end, c
         "dc_energy_kwh": 0,
         "dc_energy_share": 0,
     }
-    assert response.json()["totals"] == expected
-    assert response.json()["buckets"] == [{"bucket_start": start + "T00:00:00Z", **expected}]
+    assert {key: response.json()["totals"][key] for key in expected} == expected
+    assert len(response.json()["buckets"]) == 1
+    assert response.json()["buckets"][0]["bucket_start"] == start + "T00:00:00Z"
+    assert {key: response.json()["buckets"][0][key] for key in expected} == expected
 
 
 async def test_charging_zero_energy_and_unknown_classification(client, db):
     await db.execute("UPDATE charging_processes SET charge_energy_added=0 WHERE id=1")
     body = (await client.get(BASE, params={**WINDOW, "kind": "charging"})).json()
-    assert body["buckets"][0] == {
+    expected = {
         "bucket_start": "2026-01-01T00:00:00Z",
         "sessions": 1,
         "energy_added_kwh": 0,
@@ -204,6 +216,7 @@ async def test_charging_zero_energy_and_unknown_classification(client, db):
         "dc_energy_kwh": 0,
         "dc_energy_share": None,
     }
+    assert {key: body["buckets"][0][key] for key in expected} == expected
     unknown = await client.get(
         BASE,
         params={
@@ -213,7 +226,7 @@ async def test_charging_zero_energy_and_unknown_classification(client, db):
             "to": "2026-03-03T00:00:00Z",
         },
     )
-    assert unknown.json()["totals"] == {
+    expected_unknown = {
         "sessions": 1,
         "energy_added_kwh": 20,
         "cost": 12,
@@ -222,6 +235,8 @@ async def test_charging_zero_energy_and_unknown_classification(client, db):
         "dc_energy_kwh": 0,
         "dc_energy_share": None,
     }
+
+    assert {key: unknown.json()["totals"][key] for key in expected_unknown} == expected_unknown
 
 
 async def test_ongoing_charging_excluded_at_fixed_now(client):
@@ -246,11 +261,16 @@ async def test_ongoing_charging_excluded_at_fixed_now(client):
         "dc_energy_kwh": 0,
         "dc_energy_share": None,
     }
-    assert response.json()["totals"] == expected
-    assert response.json()["buckets"] == [{"bucket_start": "2026-03-01T00:00:00Z", **expected}]
+    assert {key: response.json()["totals"][key] for key in expected} == expected
+    assert len(response.json()["buckets"]) == 1
+    assert response.json()["buckets"][0]["bucket_start"] == "2026-03-01T00:00:00Z"
+    assert {key: response.json()["buckets"][0][key] for key in expected} == expected
 
 
-async def test_driving_preferred_range_missing_efficiency_and_summary_agree(client, db):
+async def test_driving_preferred_range_missing_efficiency_and_summary_agree(client, db, app):
+    from tests.conftest import FIXED_NOW
+
+    app.dependency_overrides[get_now] = lambda: FIXED_NOW
     response = await client.get(BASE, params=WINDOW)
     summary = (await client.get("/v1/vehicles/1/summary")).json()
     march = response.json()["buckets"][2]

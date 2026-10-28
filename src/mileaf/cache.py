@@ -50,13 +50,21 @@ class TTLCache:
         return len(self.entries)
 
 
-def conditional_response(request: Request, body: bytes, *, ttl: int) -> Response:
+def conditional_response(
+    request: Request, body: bytes, *, ttl: int, validator_body: bytes | None = None
+) -> Response:
     # Include every query parameter even when two requests currently serialize identically.
     identity = json.dumps([request.url.path, request.url.query], separators=(",", ":")).encode()
-    etag = '"' + hashlib.sha256(identity + b"\0" + body).hexdigest() + '"'
+    content = body if validator_body is None else validator_body
+    etag = '"' + hashlib.sha256(identity + b"\0" + content).hexdigest() + '"'
+    if validator_body is not None:
+        # Generation timestamps can change while the data representation is equivalent.
+        etag = "W/" + etag
     headers = {"ETag": etag, "Cache-Control": f"private, max-age={ttl}"}
     candidates = [value.strip() for value in request.headers.get("if-none-match", "").split(",")]
-    matches = any(value == "*" or value.removeprefix("W/") == etag for value in candidates)
+    matches = any(
+        value == "*" or value.removeprefix("W/") == etag.removeprefix("W/") for value in candidates
+    )
     if request.method in {"GET", "HEAD"} and matches:
         return Response(status_code=304, headers=headers)
     return Response(content=body, headers=headers, media_type="application/json")

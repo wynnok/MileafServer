@@ -15,8 +15,11 @@ from mileaf.config import Settings
 async def test_meta_contract(client):
     response = await client.get("/v1/meta")
     assert response.status_code == 200
-    assert response.json() == {
-        "version": "0.1.0",
+    body = response.json()
+    assert body["charging_experience"]["contract_version"] == "charging-experience-v1"
+    assert all(body["charging_experience"]["fields"].values())
+    assert {key: value for key, value in body.items() if key != "charging_experience"} == {
+        "version": "0.2.0",
         "teslamate_schema_version": 20260808090000,
         "schema_ok": True,
         "tested": True,

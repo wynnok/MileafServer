@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import asyncpg
 
+from mileaf.queries.charging_fields import OPTIONAL_CHARGING_COLUMNS
+
 # PostgreSQL udt_name, so enum renames between releases do not affect text casts.
 CAPABILITIES: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {
     "meta": {
@@ -24,6 +26,7 @@ TESTED_SCHEMA_MIN = TESTED_SCHEMA_MAX = 20260808090000
 class Compatibility:
     teslamate_schema_version: int | None
     tested: bool
+    charging_columns: frozenset[tuple[str, str]]
 
 
 async def probe_database(pool: asyncpg.Pool) -> Compatibility:
@@ -64,4 +67,10 @@ async def probe_database(pool: asyncpg.Pool) -> Compatibility:
     return Compatibility(
         schema_version,
         schema_version is not None and TESTED_SCHEMA_MIN <= schema_version <= TESTED_SCHEMA_MAX,
+        frozenset(
+            (table, column)
+            for table, columns in OPTIONAL_CHARGING_COLUMNS.items()
+            for column, types in columns.items()
+            if available.get((table, column)) in types
+        ),
     )

@@ -106,3 +106,26 @@ UV_CACHE_DIR=.cache/uv uv run pytest -m slow
 #6 的主数据截止 3/15 与明确列出的 3/28–30 DST 场景冲突：保留显式 DST 特例，其余主数据从 1/1 到固定时钟，时钟不随运行时间改变。未来 DST 行程与会话用于分桶边界；它们也晚于固定时钟，因此概览的 `last_drive` / `last_charge` 可能选中这些记录，而 `freshness` 仍只取时钟前的位置点/状态。
 
 另一个已核实并经用户确认的偏差：v4.3.0 migration 已将非正 `charger_phases` 清为 NULL，且有 `CHECK (charger_phases > 0)`。因此不能照 #6 装载相数为 0 的 DC 数据；保留真实约束并改用 `fast_charger_present=true` 的超充采样。B8（#17）已按此修正 AC/DC 判定，并保留上游约束；不能通过删除约束实现旧假设。
+
+## 充电体验增量（#29–#33）
+
+`tests/test_charging_experience.py` 沿同一 HTTP/ASGI 缝使用每测试新建的本地数据库；
+不读取任何部署配置或生产连接。该模块固定时钟为 `2026-10-28T12:00:00Z`，以覆盖提案
+10 月合成例；既有统计测试也使用此日期，首页对账测试保留原 3 月时钟。
+
+```sh
+UV_CACHE_DIR=.cache/uv uv run pytest tests/test_charging_experience.py
+UV_CACHE_DIR=.cache/uv uv run pytest tests/test_charging_experience.py -m slow
+```
+
+对账输入：会话 2026-10-27 13:12–13:46+08:00，18→82%，added=46.8、used=49.5、
+cost=71.28、duration_min=34；逐分钟 35 个采样，原始峰值 175 kW，两个端点为 166 kW，
+20% 在 13:13、80% 在 13:41。期望 added 配对均价 71.28/46.8、grid 均价 1.44、
+原始峰值 175、两点图峰值 166、20–80 elapsed=1680 秒。
+该例是固定设计夹具，不是生产对账证据，也不代替 #28。
+
+额外矩阵覆盖全缺失/真实 0、分母错配、跨午夜下钻与既有 DST 桶、四种排序与绑定游标、
+未来上界与递增时钟的 304、同名地点身份/无坐标、非均匀功率权重、SOC 回退/重复时刻/
+跳过阈值/未达到/单点/空/长缺口/进行中、可选列删除及类型不符、状态事件超过 1000 的截断。
+新增 slow 用同一 5000 会话/10 万采样检查列表、地点组和充电统计均不超 5 秒查询约束、
+返回集合有界；AC/DC 对候选会话采样批量分组，避免逐会话相关扫描。不增加任何索引。

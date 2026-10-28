@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from uuid import uuid4
 
 import asyncpg
@@ -15,6 +16,7 @@ from starlette.exceptions import HTTPException
 from mileaf.auth import AuthStore, require_bearer
 from mileaf.auth import router as auth_router
 from mileaf.cache import TTLCache
+from mileaf.charging_locations import router as charging_locations_router
 from mileaf.charging_sessions import router as charging_sessions_router
 from mileaf.config import Settings
 from mileaf.database import create_pool
@@ -38,6 +40,7 @@ ROUTERS = [
     stats_router,
     drives_router,
     charging_sessions_router,
+    charging_locations_router,
     summary_router,
 ]
 logger = logging.getLogger("mileaf")
@@ -64,7 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await app.state.pool.close()
 
-    app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_bearer)])
+    app = FastAPI(
+        version=version("mileaf-server"), lifespan=lifespan, dependencies=[Depends(require_bearer)]
+    )
     app.state.settings = configuration
     app.state.auth_store = AuthStore(configuration.state_file)
     app.state.cache = TTLCache(

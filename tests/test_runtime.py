@@ -47,7 +47,7 @@ async def test_unavailable_database_returns_safe_error(caplog) -> None:
 async def test_reachable_database_is_healthy(health_client: httpx.AsyncClient) -> None:
     response = await health_client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "0.1.0"}
+    assert response.json() == {"status": "ok", "version": "0.2.0"}
 
 
 async def test_pool_connections_reject_writes_after_reuse(database_dsn: str, db, tmp_path) -> None:

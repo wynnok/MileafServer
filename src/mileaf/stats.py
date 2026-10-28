@@ -17,7 +17,13 @@ from mileaf.database import fetch_rows
 from mileaf.dependencies import get_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.probes import CAPABILITIES
-from mileaf.queries.charging import is_dc_sql
+from mileaf.queries.charging_metrics import ChargingMetrics, charging_metrics_sql
+from mileaf.queries.charging_query import (
+    ChargingQuery,
+    ChargingQueryEcho,
+    charging_parameters,
+    match_source,
+)
 from mileaf.queries.energy import energy_kwh_sql
 from mileaf.queries.time import Bucket, bucket_sql, validate_timezone
 from mileaf.units import consumption_wh_km, distance_km, distance_km_sql, speed_kmh
@@ -67,16 +73,6 @@ class DrivingMetrics(BaseModel):
     speed_max_kmh: float | None
 
 
-class ChargingMetrics(BaseModel):
-    sessions: int
-    energy_added_kwh: float
-    cost: float | None
-    cost_per_kwh: float | None
-    ac_energy_kwh: float
-    dc_energy_kwh: float
-    dc_energy_share: float | None
-
-
 class DrivingBucket(DrivingMetrics):
     bucket_start: datetime
 
@@ -93,6 +89,8 @@ class DrivingStats(BaseModel):
 class ChargingStats(BaseModel):
     buckets: list[ChargingBucket]
     totals: ChargingMetrics
+    query: ChargingQueryEcho
+    as_of: datetime
 
 
 @dataclass(frozen=True)
@@ -142,8 +140,10 @@ async def statistics(
     vehicle: Annotated[VehicleIdentity, Depends(get_vehicle_or_404)],
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
     params: Annotated[StatsParameters, Depends(stats_parameters)],
+    charging: Annotated[ChargingQuery, Depends(charging_parameters)],
 ) -> Response:
     driving = params.kind == "driving"
+    args: list[Any] = [vehicle.id, params.from_, params.to, params.tz]
     drive_bucket = bucket_sql(params.bucket, timestamp="d.start_date AT TIME ZONE 'UTC'", tz="$4")
     charge_bucket = bucket_sql(params.bucket, timestamp="cp.end_date AT TIME ZONE 'UTC'", tz="$4")
     if driving:
@@ -182,51 +182,39 @@ async def statistics(
         }
         zero_metrics = {"drives", "distance_km", "energy_kwh"}
     else:
-        source = (
-            "/* TeslaMate v4.3.0 charging-stats semantics, independently rewritten: "
-            "finished sessions by end_date; sum charge_energy_added (kWh, per Mileaf #5), "
-            "sum known cost; cost / energy of only cost-known sessions. Free sessions "
-            "participate; unknown costs do not. AC/DC uses shared phases mode, "
-            "unknown classifications stay in total energy only. DC share = DC / (AC+DC); "
-            "ratios use merged sums and NULL for a zero denominator. */ "
-            f"SELECT {charge_bucket} AS bucket_start, cp.charge_energy_added AS energy, "
-            f"cp.cost, {is_dc_sql()} AS is_dc FROM charging_processes cp "
-            "WHERE cp.car_id=$1 AND cp.end_date IS NOT NULL "
-            "AND cp.end_date AT TIME ZONE 'UTC' >= $2::timestamptz "
-            "AND cp.end_date AT TIME ZONE 'UTC' < $3::timestamptz"
-        )
-        metrics = {
-            "sessions": "count(*)",
-            "energy_added_kwh": "coalesce(sum(energy),0)",
-            "cost": "CASE WHEN count(*)=0 THEN 0 ELSE sum(cost) END",
-            "cost_per_kwh": ratio_sql(
-                numerator="cost", denominator="CASE WHEN cost IS NOT NULL THEN energy END"
-            ),
-            "ac_energy_kwh": "coalesce(sum(energy) FILTER (WHERE is_dc IS FALSE),0)",
-            "dc_energy_kwh": "coalesce(sum(energy) FILTER (WHERE is_dc IS TRUE),0)",
-            "dc_energy_share": ratio_sql(
-                numerator="CASE WHEN is_dc IS TRUE THEN energy ELSE 0 END",
-                denominator="CASE WHEN is_dc IS NOT NULL THEN energy END",
-            ),
+        matched, args = match_source(charging, vehicle.id, completed=True)
+        args.append(params.tz)
+        charge_time = "started_at" if charging.echo.time_basis == "started_at" else "ended_at"
+        charge_bucket = bucket_sql(params.bucket, timestamp=charge_time, tz="$8")
+        source = f"SELECT *, {charge_bucket} AS bucket_start FROM ({matched}) matched"
+        metrics = charging_metrics_sql()
+        zero_metrics = set(metrics) - {
+            "cost_per_kwh",
+            "dc_energy_share",
+            "unit_cost_added",
+            "unit_cost_grid",
         }
-        zero_metrics = {"sessions", "energy_added_kwh", "cost", "ac_energy_kwh", "dc_energy_kwh"}
     # GROUPING SETS applies the same formulas to buckets and the full window.
     aggregates = ", ".join(f"{expression} AS {name}" for name, expression in metrics.items())
     projected = ", ".join(
         f"CASE WHEN a.bucket_start IS NULL THEN 0 ELSE a.{name} END AS {name}"
         if name in zero_metrics
+        else f"coalesce(a.{name}, (SELECT {expression} FROM source WHERE false)) AS {name}"
+        if name.startswith("unit_cost_")
         else f"a.{name}"
-        for name in metrics
+        for name, expression in metrics.items()
     )
+    tz_parameter = "$4" if driving else "$8"
     query = (
         f"WITH source AS ({source}), "
         f"aggregated AS (SELECT bucket_start, grouping(bucket_start)=1 AS is_total, {aggregates} "
         "FROM source GROUP BY GROUPING SETS ((bucket_start), ())), "
-        "calendar AS (SELECT local_start AT TIME ZONE $4 AS bucket_start FROM generate_series("
-        f"date_trunc('{params.bucket}', $2::timestamptz AT TIME ZONE $4), "
-        f"date_trunc('{params.bucket}', $3::timestamptz AT TIME ZONE $4), "
+        f"calendar AS (SELECT local_start AT TIME ZONE {tz_parameter} AS bucket_start "
+        "FROM generate_series("
+        f"date_trunc('{params.bucket}', $2::timestamptz AT TIME ZONE {tz_parameter}), "
+        f"date_trunc('{params.bucket}', $3::timestamptz AT TIME ZONE {tz_parameter}), "
         f"interval '1 {params.bucket}') AS local_start "
-        "WHERE local_start AT TIME ZONE $4 < $3::timestamptz) "
+        f"WHERE local_start AT TIME ZONE {tz_parameter} < $3::timestamptz) "
         f"SELECT c.bucket_start, false AS is_total, {projected} "
         "FROM calendar c LEFT JOIN aggregated a "
         "ON a.bucket_start=c.bucket_start AND NOT a.is_total UNION ALL "
@@ -234,7 +222,7 @@ async def statistics(
         "FROM aggregated WHERE is_total ORDER BY is_total, bucket_start"
     )
     async with pool.acquire() as connection:
-        rows = await fetch_rows(connection, query, vehicle.id, params.from_, params.to, params.tz)
+        rows = await fetch_rows(connection, query, *args)
     if driving:
         driving_rows = []
         for row in rows:
@@ -252,5 +240,16 @@ async def statistics(
         result = ChargingStats(
             buckets=[ChargingBucket(**dict(row)) for row in rows if not row["is_total"]],
             totals=ChargingMetrics(**dict(rows[-1])),
+            query=charging.echo,
+            as_of=charging.as_of,
         )
-    return conditional_response(request, result.model_dump_json().encode(), ttl=30)
+    return conditional_response(
+        request,
+        result.model_dump_json(by_alias=True).encode(),
+        ttl=30,
+        validator_body=(
+            result.model_dump_json(by_alias=True, exclude={"as_of"}).encode()
+            if not driving
+            else None
+        ),
+    )

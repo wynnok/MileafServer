@@ -19,6 +19,14 @@ CAPABILITIES["charging_classification"] = {
 }
 
 
+def is_dc_aggregate_sql() -> str:
+    """Same classification for correlated detail queries and batched match sets."""
+    return (
+        "CASE WHEN count(*)=0 THEN NULL "
+        "ELSE coalesce(mode() WITHIN GROUP (ORDER BY sample.charger_phases),0)=0 END"
+    )
+
+
 def is_dc_sql(*, session: str = "cp") -> str:
     """Trusted SQL alias only; use in lists and grouped energy queries alike."""
     return (
@@ -27,8 +35,7 @@ def is_dc_sql(*, session: str = "cp") -> str:
         "phases to NULL (positive_charger_phases constraint). No samples => unknown "
         "(Mileaf extension). Classification is unitless; energy below is stored kWh. "
         "Independently rewritten from panel semantics. */ "
-        "SELECT CASE WHEN count(*)=0 THEN NULL "
-        "ELSE coalesce(mode() WITHIN GROUP (ORDER BY sample.charger_phases),0)=0 END "
+        f"SELECT {is_dc_aggregate_sql()} "
         f"FROM charges sample WHERE sample.charging_process_id={session}.id)"
     )
 
