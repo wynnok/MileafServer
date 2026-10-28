@@ -9,7 +9,7 @@ endpoints only, no extrapolation, no kWh derivation, no sentinel/HVAC/fault infe
 import hashlib
 import json
 import math
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -377,7 +377,7 @@ def _state_hours(
     """
     if we <= ws:
         return 0.0, 0.0, 0.0, False
-    lo_idx = max(0, bisect_right(starts, ws) - 1)
+    lo_idx = 0  # Earlier long segments may overlap the window past later short segments.
     hi_idx = bisect_left(starts, we)
     hours = {"online": 0.0, "asleep": 0.0, "offline": 0.0}
     spans: list[tuple[datetime, datetime]] = []
@@ -744,10 +744,8 @@ async def parking_observations(
     totals, buckets = _aggregate(built, params.calendar)
     if totals.valid_windows > 0:
         status: Status = "available"
-    elif totals.candidate_windows > 0:
-        status = "insufficient_data"
     else:
-        status = "no_records"
+        status = "insufficient_data"
     return respond(
         status,
         totals,
