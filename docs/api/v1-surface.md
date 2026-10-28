@@ -614,11 +614,11 @@ filters.months、time_basis=ended_at）、`as_of`、`range_kind="rated"`、
 状态：Implemented locally（#37）。`GET /v1/vehicles/{vehicle_id}/driving-analysis?view=usage`，
 方法标识 `usage-distribution-v1`、`version=1`、`validation=provisional`。聚合复用 #36 的唯一匹配实现
 `src/mileaf/queries/driving_query.py::match_source`（`driving-match-v1`），固定 `completed_only=true`，
-进行中行程永不成为候选；`view` 必填，当前只声明已实现的 `usage`，`conditions` 由 #38 补入枚举。
+进行中行程永不成为候选；`view` 必填，支持 `usage` 与 `conditions`。
 
 | 参数 | 类型与默认 | 约束 |
 |---|---|---|
-| `view` | `usage`，必填 | 其他值 400；OpenAPI 只发布已实现的 view |
+| `view` | `usage` / `conditions`，必填 | 其他值 400 |
 | `from` / `to` | ISO 8601 带偏移，必填 | 半开 `[from,to)`；须 `0 < to-from ≤ 730` 天，否则 400；随后把 `to` 裁到请求时刻，裁完为空 400 |
 | `tz` | IANA 字符串，默认 `UTC` | 只决定本地日历（活跃日、ISO 星期）与 `partial_today`，时间比较仍按 UTC |
 | `distance_min_km` / `distance_max_km` / `outside_temp_min_c` / `outside_temp_max_c` / `energy_status` | 同行程列表 | 与证据列表共用同一份校验（`driving_filters`），条件取交集 |
@@ -637,7 +637,7 @@ filters.months、time_basis=ended_at）、`as_of`、`range_kind="rated"`、
 | `mean_speed_kmh` | km/h | 速度有效集（距离有效且 `duration_min>0`）的 `sum(km)×60 ÷ sum(min)`，不平均各趟速度；分母 0 或 null 时为 null |
 | `distance_p50_km` / `distance_p90_km` | km | PostgreSQL `percentile_cont` 取完整有效距离集；不平均分组中位数 |
 | `duration_p50_min` / `duration_p90_min` | min | 同上，取完整有效时长集（记录数可与距离集不同）；插值可产生 .5，不做展示舍入 |
-| `coverage` | — | `candidate_count` 加 `distance`/`duration`/`speed`/`paired` 四个有效集，每集含 candidate/valid/excluded 与固定键的 `excluded_by_reason` |
+| `coverage` | — | `candidate_count` 加 `distance`/`duration`/`speed`/`paired` 四个有效集，每集含 candidate/valid/excluded、候选/有效距离和时长、未知距离/时长数与固定键的 `excluded_by_reason` |
 | `distance_bins` | — | 恒 3 组 `[0,10)`、`[10,50)`、`[50,+∞)` km；0 km 计入次数与距离分位数但不进配对电耗；负、缺失、非有限距离不进组，只在 coverage 计数 |
 | `weekday_bins` | — | 恒 7 组 ISO 星期 1..7，按本地 `started_at`；不命名为通勤，也不带 `evidence_filter`（行程列表没有星期筛选） |
 

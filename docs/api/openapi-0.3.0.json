@@ -3943,6 +3943,28 @@
             "title": "Candidate Count",
             "type": "integer"
           },
+          "candidate_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Distance Km"
+          },
+          "candidate_duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Duration Min"
+          },
           "excluded_by_reason": {
             "additionalProperties": {
               "type": "integer"
@@ -3954,15 +3976,51 @@
             "title": "Excluded Count",
             "type": "integer"
           },
+          "unknown_distance_count": {
+            "title": "Unknown Distance Count",
+            "type": "integer"
+          },
+          "unknown_duration_count": {
+            "title": "Unknown Duration Count",
+            "type": "integer"
+          },
           "valid_count": {
             "title": "Valid Count",
             "type": "integer"
+          },
+          "valid_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Distance Km"
+          },
+          "valid_duration_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Duration Min"
           }
         },
         "required": [
           "candidate_count",
           "valid_count",
           "excluded_count",
+          "candidate_distance_km",
+          "valid_distance_km",
+          "candidate_duration_min",
+          "valid_duration_min",
+          "unknown_distance_count",
+          "unknown_duration_count",
           "excluded_by_reason"
         ],
         "title": "SetCoverage",

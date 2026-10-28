@@ -65,7 +65,10 @@ async def usage(client, **params):
 
 
 def assert_coverage(body, name, candidate, valid, reasons):
-    assert body == {
+    assert {
+        key: body[key]
+        for key in ("candidate_count", "valid_count", "excluded_count", "excluded_by_reason")
+    } == {
         "candidate_count": candidate,
         "valid_count": valid,
         "excluded_count": candidate - valid,
@@ -195,9 +198,9 @@ async def test_usage_metrics_are_weighted_over_one_match_set(client, db):
     assert body["driving_distance_km"] == 195
     # Recorded duration only; 707 and 710 never fall back to their timestamp span.
     assert body["driving_duration_min"] == 195
-    assert body["distance_per_active_day_km"] == 27.9
+    assert body["distance_per_active_day_km"] == pytest.approx(195 / 7)
     # 195 km over 130 positive minutes: 75*60/130 = 34.6, not the 22.5 mean of trip speeds.
-    assert body["mean_speed_kmh"] == 35
+    assert body["mean_speed_kmh"] == pytest.approx(75 * 60 / 130)
     assert_coverage(body["coverage"]["distance"], "distance", 9, 6, (2, 0, 1))
     assert_coverage(body["coverage"]["duration"], "duration", 9, 7, (1, 1))
     assert_coverage(body["coverage"]["speed"], "speed", 9, 4, (2, 0, 1, 1, 0, 1))
@@ -210,6 +213,8 @@ async def test_percentiles_use_the_whole_valid_set_not_the_group_medians(client,
     # Six valid distances [0,5,10,20,60,100]: P50 interpolates to 15, P90 to 80.
     assert body["distance_p50_km"] == 15
     assert body["distance_p90_km"] == 80
+    # The 0 km drive stays in the distance set; dropping it would move P50 to 20.
+    assert body["distance_p50_km"] != 20
     # Seven valid durations [0,10,20,30,30,45,60]: P50 30, P90 51 on a different record count.
     assert body["duration_p50_min"] == 30
     assert body["duration_p90_min"] == 51
@@ -252,7 +257,7 @@ async def test_distance_groups_hold_their_bounds_and_the_zero_km_rules(client, d
     assert_coverage(long["coverage"]["duration"], "duration", 2, 1, (1, 0))
     assert long["paired_energy_kwh"] == 37.5
     assert long["paired_distance_km"] == 160
-    assert long["consumption_wh_km"] == 234
+    assert long["consumption_wh_km"] == 234.375
     # 705 (-3 km) and 706 (NULL) never enter a group; the period coverage explains both.
     assert sum(row["drives"] for row in (short, medium, long)) == 6
 
@@ -587,3 +592,38 @@ async def test_missing_usage_source_columns_fail_closed(db, database_dsn, tmp_pa
     with pytest.raises(RuntimeError, match=r"drives\.duration_min"):
         async with application.router.lifespan_context(application):
             pytest.fail("a missing usage source column must refuse startup")
+
+
+async def test_nonfinite_values_count_as_invalid_and_stay_out_of_groups(client, db):
+    await seed_usage(db)
+    # NaN and infinity are neither missing nor negative, so they get their own reason.
+    await db.execute("""
+        UPDATE drives SET distance='NaN' WHERE id=704;
+        UPDATE drives SET distance='Infinity' WHERE id=709;
+        UPDATE drives SET start_rated_range_km='NaN' WHERE id=702
+    """)
+    body = await usage(client)
+    assert body["coverage"]["candidate_count"] == 9
+    assert_coverage(body["coverage"]["distance"], "distance", 9, 4, (2, 2, 1))
+    # 709 loses its zero duration to the higher-priority invalid distance.
+    assert_coverage(body["coverage"]["speed"], "speed", 9, 3, (2, 2, 1, 1, 0, 0))
+    # 702 keeps a valid distance while its estimated energy became NaN.
+    assert_coverage(body["coverage"]["paired"], "paired", 9, 3, (2, 2, 1, 0, 1))
+    assert [row["drives"] for row in body["distance_bins"]] == [1, 1, 2]
+    medium = body["distance_bins"][1]
+    assert medium["distance_km"] == 10
+    # Candidates exist but none pairs, so the additive paired terms stay null instead of 0.
+    assert medium["paired_energy_kwh"] is None
+    assert medium["paired_distance_km"] is None
+    assert medium["consumption_wh_km"] is None
+    assert medium["status"] == "available"
+    assert_coverage(medium["coverage"]["paired"], "paired", 1, 0, (0, 0, 0, 0, 1))
+    thursday = body["weekday_bins"][3]
+    assert thursday["drives"] == 1
+    assert thursday["distance_km"] is None
+    assert thursday["duration_min"] == 10
+    assert thursday["status"] == "available"
+    assert_coverage(thursday["coverage"]["distance"], "distance", 1, 0, (0, 1, 0))
+    # Only [5,10,60,100] stay valid, so the quantiles move with the excluded values.
+    assert body["distance_p50_km"] == 35
+    assert body["distance_p90_km"] == 88

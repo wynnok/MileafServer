@@ -32,7 +32,6 @@ from mileaf.queries.driving_analysis import (
 from mileaf.queries.driving_query import DrivingQueryEcho
 from mileaf.queries.parameters import ResourceRoute
 from mileaf.queries.statistics_fields import statistics_feature_supported
-from mileaf.units import consumption_wh_km, distance_km, speed_kmh
 from mileaf.vehicles import VehicleIdentity, get_vehicle_or_404
 
 router = APIRouter(prefix="/v1", tags=["driving analysis"], route_class=ResourceRoute)
@@ -44,6 +43,12 @@ class SetCoverage(BaseModel):
     candidate_count: int
     valid_count: int
     excluded_count: int
+    candidate_distance_km: float | None
+    valid_distance_km: float | None
+    candidate_duration_min: float | None
+    valid_duration_min: float | None
+    unknown_distance_count: int
+    unknown_duration_count: int
     excluded_by_reason: dict[str, int]
 
 
@@ -155,6 +160,12 @@ def set_coverage(row: dict[str, Any], name: str, candidates: int) -> SetCoverage
         candidate_count=candidates,
         valid_count=valid,
         excluded_count=candidates - valid,
+        candidate_distance_km=additive(row.get("candidate_distance_km"), candidates),
+        valid_distance_km=additive(row.get(f"{name}_valid_distance_km"), candidates),
+        candidate_duration_min=additive(row.get("candidate_duration_min"), candidates),
+        valid_duration_min=additive(row.get(f"{name}_valid_duration_min"), candidates),
+        unknown_distance_count=int(row.get("unknown_distance_count", 0)),
+        unknown_duration_count=int(row.get("unknown_duration_count", 0)),
         excluded_by_reason={reason: int(reasons[reason]) for _, reason in USAGE_SETS[name]},
     )
 
@@ -191,11 +202,11 @@ def distance_bins(
                 lower_km=lower,
                 upper_km=upper,
                 drives=drives,
-                distance_km=distance_km(additive(row["distance_sum_km"], drives)),
+                distance_km=additive(row["distance_sum_km"], drives),
                 duration_min=additive(row["duration_sum_min"], drives),
                 paired_energy_kwh=additive(row["paired_energy_kwh"], drives),
-                paired_distance_km=distance_km(additive(row["paired_distance_km"], drives)),
-                consumption_wh_km=consumption_wh_km(row["consumption_wh_km"]),
+                paired_distance_km=additive(row["paired_distance_km"], drives),
+                consumption_wh_km=row["consumption_wh_km"],
                 status=group_status(drives, row),
                 coverage=DistanceBinCoverage(
                     distance=set_coverage(row, "distance", drives),
@@ -217,7 +228,7 @@ def weekday_bins(rows: dict[int, dict[str, Any]]) -> list[WeekdayBin]:
             WeekdayBin(
                 weekday=weekday,
                 drives=drives,
-                distance_km=distance_km(additive(row["distance_sum_km"], drives)),
+                distance_km=additive(row["distance_sum_km"], drives),
                 duration_min=additive(row["duration_sum_min"], drives),
                 status=group_status(drives, row),
                 coverage=WeekdayBinCoverage(
@@ -257,12 +268,12 @@ def usage_result(
         as_of=query.as_of,
         active_days=int(row["active_days"]),
         partial_today=bool(row["partial_today"]),
-        driving_distance_km=distance_km(additive(row["distance_sum_km"], candidates)),
+        driving_distance_km=additive(row["distance_sum_km"], candidates),
         driving_duration_min=additive(row["duration_sum_min"], candidates),
-        distance_per_active_day_km=distance_km(row["distance_per_active_day_km"]),
-        mean_speed_kmh=speed_kmh(row["mean_speed_kmh"]),
-        distance_p50_km=distance_km(row["distance_p50_km"]),
-        distance_p90_km=distance_km(row["distance_p90_km"]),
+        distance_per_active_day_km=row["distance_per_active_day_km"],
+        mean_speed_kmh=row["mean_speed_kmh"],
+        distance_p50_km=row["distance_p50_km"],
+        distance_p90_km=row["distance_p90_km"],
         duration_p50_min=row["duration_p50_min"],
         duration_p90_min=row["duration_p90_min"],
         coverage=UsageCoverage(
@@ -416,5 +427,10 @@ async def driving_analysis(
         request,
         result.model_dump_json(by_alias=True).encode(),
         ttl=30,
-        validator_body=result.model_dump_json(by_alias=True, exclude={"as_of"}).encode(),
+        validator_body=result.model_dump_json(
+            by_alias=True,
+            exclude={"as_of": True, "summary": {"as_of": True}}
+            if isinstance(result, DrivingAnalysisConditions)
+            else {"as_of"},
+        ).encode(),
     )
