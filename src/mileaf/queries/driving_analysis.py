@@ -244,6 +244,27 @@ CASE WHEN c.distance_reason IS NOT NULL THEN NULL {bin_edges}"""
     return sql, [*args, query.echo.tz]
 
 
+def coverage_amounts_sql() -> list[str]:
+    fields = [
+        "sum(distance) FILTER (WHERE " + finite_sql("distance") + ") AS candidate_distance_km",
+        "sum(duration_min) AS candidate_duration_min",
+        "count(*) FILTER (WHERE distance IS NULL OR NOT "
+        + finite_sql("distance")
+        + ") AS unknown_distance_count",
+        "count(*) FILTER (WHERE duration_min IS NULL) AS unknown_duration_count",
+    ]
+    for name in USAGE_SETS:
+        fields.extend(
+            [
+                f"sum(distance) FILTER (WHERE valid_{name} AND "
+                + finite_sql("distance")
+                + f") AS {name}_valid_distance_km",
+                f"sum(duration_min) FILTER (WHERE valid_{name}) AS {name}_valid_duration_min",
+            ]
+        )
+    return fields
+
+
 def usage_summary_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str, list[Any]]:
     scoped, args = scoped_sql(query, vehicle_id)
     percentiles = "".join(
@@ -280,7 +301,7 @@ def usage_summary_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str
         "count(*) FILTER (WHERE valid_paired) AS paired_valid_count, "
         "sum(distance) FILTER (WHERE valid_paired) AS paired_distance_km, "
         "sum(energy_kwh) FILTER (WHERE valid_paired) AS paired_energy_kwh, "
-        f"{reasons} FROM scoped"
+        f"{reasons}, {', '.join(coverage_amounts_sql())} FROM scoped"
     )
     return sql, [*args, query.as_of]
 
@@ -301,6 +322,7 @@ def usage_groups_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str,
             "sum(energy_kwh) FILTER (WHERE valid_paired) * 1000 "
             "/ nullif(sum(distance) FILTER (WHERE valid_paired), 0) AS consumption_wh_km",
         ]
+        + coverage_amounts_sql()
         + [
             reason_counts_sql(steps, f"{name}_reason", f"{name}_reasons")
             for name, steps in USAGE_SETS.items()
@@ -329,6 +351,7 @@ def temperature_groups_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tupl
             "FILTER (WHERE valid_speed),0) AS mean_trip_speed_kmh",
             "percentile_cont(0.5) WITHIN GROUP (ORDER BY distance) FILTER (WHERE "
             "valid_distance) AS median_drive_distance_km",
+            *coverage_amounts_sql(),
             *[
                 reason_counts_sql(steps, f"{name}_reason", f"{name}_reasons")
                 for name, steps in USAGE_SETS.items()

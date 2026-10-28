@@ -43,3 +43,33 @@ async def test_conditions_temperature_group_budget(client, db):
     )
     result = await client.get(PATH, params=WINDOW | {"view": "conditions"})
     assert result.status_code == 400
+
+
+async def test_new_analysis_precision_and_coverage(client, db):
+    await seed_usage(db)
+    await db.execute("UPDATE drives SET distance=5.004 WHERE id=701")
+    response = await client.get(PATH, params=WINDOW | {"view": "conditions"})
+    body = response.json()
+    assert body["summary"]["driving_distance_km"] == pytest.approx(195.004)
+    paired = body["temperature_bins"][0]["coverage"]["paired"]
+    assert paired["valid_distance_km"] == pytest.approx(195.004)
+    assert paired["candidate_distance_km"] == pytest.approx(192.004)
+    assert paired["unknown_distance_count"] == 2
+
+
+async def test_conditions_etag_ignores_nested_generation_time(client, app, db):
+    from datetime import UTC, datetime, timedelta
+
+    from mileaf.dependencies import get_now
+
+    await seed_usage(db)
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    app.dependency_overrides[get_now] = lambda: now
+    response = await client.get(PATH, params=WINDOW | {"view": "conditions"})
+    now += timedelta(seconds=1)
+    repeat = await client.get(
+        PATH,
+        params=WINDOW | {"view": "conditions"},
+        headers={"If-None-Match": response.headers["etag"]},
+    )
+    assert repeat.status_code == 304
