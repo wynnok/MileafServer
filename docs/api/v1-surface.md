@@ -487,3 +487,75 @@ tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_anal
 进程内缓存与字节级 ETag/304。本切片不引入新源列：`drives.distance`、`drives.outside_temp_avg`
 及能量源列已由 0.1/0.2 必需列启动探针覆盖，缺列时启动失败并给出修复指引，不静默降级为
 `unsupported`，因此 `meta.statistics_insights.features` 不新增本切片的功能位。
+
+### 用车节奏与分布（ST03 usage）
+
+状态：Implemented locally（#37）。`GET /v1/vehicles/{vehicle_id}/driving-analysis?view=usage`，
+方法标识 `usage-distribution-v1`、`version=1`、`validation=provisional`。聚合复用 #36 的唯一匹配实现
+`src/mileaf/queries/driving_query.py::match_source`（`driving-match-v1`），固定 `completed_only=true`，
+进行中行程永不成为候选；`view` 必填，当前只声明已实现的 `usage`，`conditions` 由 #38 补入枚举。
+
+| 参数 | 类型与默认 | 约束 |
+|---|---|---|
+| `view` | `usage`，必填 | 其他值 400；OpenAPI 只发布已实现的 view |
+| `from` / `to` | ISO 8601 带偏移，必填 | 半开 `[from,to)`；须 `0 < to-from ≤ 730` 天，否则 400；随后把 `to` 裁到请求时刻，裁完为空 400 |
+| `tz` | IANA 字符串，默认 `UTC` | 只决定本地日历（活跃日、ISO 星期）与 `partial_today`，时间比较仍按 UTC |
+| `distance_min_km` / `distance_max_km` / `outside_temp_min_c` / `outside_temp_max_c` / `energy_status` | 同行程列表 | 与证据列表共用同一份校验（`driving_filters`），条件取交集 |
+| （无 `completed_only`） | — | 由契约固定为 `true`；客户端传值被忽略，回显始终为 `completed_only=true` |
+
+响应回显完整 `query`（`vehicle_id`、裁剪后的有效 `from`/`to`、`tz`、`bucket=null`、
+`time_basis=started_at`、`filters`）与 UTC `as_of`。字段与单位：
+
+| 字段 | 单位 | 语义与可空性 |
+|---|---|---|
+| `status` | — | `available`；无候选 `no_records`；有候选但距离与时长都无有效值 `insufficient_data`；能力缺列 `unsupported` |
+| `active_days` | 天 | 完整匹配集已完成行程按本地 `started_at` 日期去重；无候选为 0 |
+| `partial_today` | — | 裁剪后的 `to` 是否已进入尚未结束的当前本地日 |
+| `driving_distance_km` / `driving_duration_min` | km / min | 各自有效集之和；时长只取记录的 `duration_min`，不回退为时间戳跨度；无候选为 0，有候选但全缺为 null |
+| `distance_per_active_day_km` | km/天 | 有效距离和 ÷ `active_days`；`active_days=0` 或无有效距离为 null |
+| `mean_speed_kmh` | km/h | 速度有效集（距离有效且 `duration_min>0`）的 `sum(km)×60 ÷ sum(min)`，不平均各趟速度；分母 0 或 null 时为 null |
+| `distance_p50_km` / `distance_p90_km` | km | PostgreSQL `percentile_cont` 取完整有效距离集；不平均分组中位数 |
+| `duration_p50_min` / `duration_p90_min` | min | 同上，取完整有效时长集（记录数可与距离集不同）；插值可产生 .5，不做展示舍入 |
+| `coverage` | — | `candidate_count` 加 `distance`/`duration`/`speed`/`paired` 四个有效集，每集含 candidate/valid/excluded 与固定键的 `excluded_by_reason` |
+| `distance_bins` | — | 恒 3 组 `[0,10)`、`[10,50)`、`[50,+∞)` km；0 km 计入次数与距离分位数但不进配对电耗；负、缺失、非有限距离不进组，只在 coverage 计数 |
+| `weekday_bins` | — | 恒 7 组 ISO 星期 1..7，按本地 `started_at`；不命名为通勤，也不带 `evidence_filter`（行程列表没有星期筛选） |
+
+每个距离组返回 `lower_km`、`upper_km`（最后一组为 null 表示无上界）、`drives`、`distance_km`、
+`duration_min`、`paired_energy_kwh`、`paired_distance_km`、`consumption_wh_km`、`status`、`coverage`
+（`distance`/`duration`/`paired` 三个有效集；星期组只给 `distance`/`duration`）与 `evidence_filter`。
+加法量在组为空时为 0、有候选但全缺时为 null；`consumption_wh_km` 用同批配对分子分母
+（`sum(paired kWh)×1000 ÷ sum(paired km)`），分母 0 或 null 时为 null。
+
+`evidence_filter` 继承同一 `from`/`to`/`tz`、全部筛选、`completed_only=true` 与该组上下界
+（与请求的距离筛选取交集），并绑定 `method=driving-match-v1`、`version=1`；未设置的筛选省略，
+可原样作为 `GET /v1/vehicles/{id}/drives` 的查询参数，逐页翻完的行程数恒等于该组 `drives`。
+若继承的距离筛选已让交集为空（例如请求 `distance_max_km=20` 时的 `[50,+∞)` 组），行程列表无法表达
+`min ≥ max` 的范围，此时 `evidence_filter` 为 null，该组 `drives` 恒为 0。
+
+排除原因按确定优先级，每条记录只计一次，因此各集 `excluded_count == sum(excluded_by_reason)`：
+
+| 有效集 | 优先级 |
+|---|---|
+| `distance` | `missing_distance` → `invalid_distance`（NaN、±∞） → `negative_distance` |
+| `duration` | `missing_duration` → `negative_duration` |
+| `speed` | distance 三项 → `missing_duration` → `negative_duration` → `zero_duration` |
+| `paired` | `missing_distance` → `invalid_distance` → `non_positive_distance`（含 0 与负） → `missing_energy` → `invalid_energy` |
+
+`thresholds` 回显 `distance_bin_edge_1_km=10`、`distance_bin_edge_2_km=50`、`distance_bins=3`、
+`weekday_bins=7`、`percentile_low=50`、`percentile_high=90`、`speed_duration_exclusive_min=0`、
+`paired_distance_exclusive_min_km=0`，全部为首版产品规则，标 `validation=provisional`，
+不是统计显著性标准。
+
+预算与缓存：一次请求 2 条业务查询（全期摘要与分位数、`GROUPING SETS` 一次算完距离组与星期组），
+上限 2；每条沿 `SET LOCAL statement_timeout='5s'`；响应恒为 3 个距离组加 7 个星期组，无逐组查询、
+无散点返回。分析不加进程 TTL 缓存，沿 `conditional_response` 的 30 秒弱 ETag，校验体排除 `as_of`，
+因此裁剪上界变化会改变表示并可能不再命中 304。日热图继续用现有
+`GET /v1/vehicles/{id}/stats?kind=driving&bucket=day` 做独立日查询，本切片不新增日历端点，
+也不从 month 桶反推活跃日。
+
+能力位：`STATISTICS_REQUIREMENTS["driving_analysis"]` 注册本视图读取的真实源列
+（`drives.car_id/start_date/end_date/distance/duration_min/outside_temp_avg`、四个 range 端点列、
+`cars.efficiency`、`settings.preferred_range`），`/v1/meta` 的
+`statistics_insights.features.driving_analysis` 由该注册计算。这些列同时仍在 0.1/0.2 必需列启动探针内，
+缺列时按 ADR-0002 拒绝启动并给出修复指引（fail closed），不会伪装成 `no_records`；
+`status=unsupported` 分支为将来新增的可选源列保留。缺数据仍由 `no_records` 与 `insufficient_data` 区分。
