@@ -24,9 +24,11 @@ from mileaf.drives import router as drives_router
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
 from mileaf.meta import router as meta_router
+from mileaf.parking_observations import router as parking_observations_router
 from mileaf.queries import charging as charging  # Register shared AC/DC requirements.
 from mileaf.queries import energy as energy  # Register shared drive-energy requirements.
 from mileaf.queries import locations as locations  # Register shared location requirements.
+from mileaf.queries import parking as parking  # Register parking_observations requirements.
 from mileaf.range_observations import router as range_observations_router
 from mileaf.stats import router as stats_router
 from mileaf.summary import router as summary_router
@@ -44,6 +46,7 @@ ROUTERS = [
     charging_sessions_router,
     charging_locations_router,
     summary_router,
+    parking_observations_router,
 ]
 logger = logging.getLogger("mileaf")
 
