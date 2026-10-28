@@ -442,3 +442,84 @@ tested_schema_version 20260808090000，以及 `driving_coverage`、`driving_anal
 各接口的字段、单位、方法与阈值说明随对应工单交付，最终冻结与验收见 #41。
 契约变更后用 `UV_CACHE_DIR=.cache/uv uv run python scripts/freeze_openapi.py` 重新生成
 `openapi-0.3.0.json`，HTTP 测试校验运行时 `/openapi.json` 与该冻结快照逐字段相等。
+
+### 闭合停放窗口（ST08 / parking-observations）
+
+`GET /v1/vehicles/{vehicle_id}/parking-observations`：核对闭合停放窗口的 SOC 变化、观测时长与
+在线/休眠/离线/未知分布。方法 `closed-window-soc-v1`、`version=1`、`validation=provisional`；
+只做 SOC 观察，不换算停放 kWh，不混用 battery_level/usable，不推断哨兵/空调/故障。仅读
+`drives`/`charging_processes`/`positions`/`states`，业务查询 2 条（事件+端点、状态），各沿 5 秒
+statement_timeout，绝不逐窗口发查询；`meta.statistics_insights.features.parking_observations`
+声明能力，缺源列返回 `status=unsupported`（与缺数据的 `no_records`/`insufficient_data` 可区分）。
+
+请求参数（全部显式，缺 from/to 或范围非法为 400）：
+
+| 参数 | 约束 |
+|---|---|
+| from / to | 必填、带时区 ISO8601，`[from,to)`，`0 < to-from ≤ 730×24h`；先把 `to` 裁到 `as_of`，裁剪后空范围 400 |
+| tz | IANA 时区，默认 UTC；周从本地周一起，日历桶按本地日历生成后输出 UTC，不生成未来桶 |
+| bucket | `day`\|`week`\|`month`，默认 day；桶数上限 day 732 / week 106 / month 25 |
+| limit | 1..100，默认 50 |
+| cursor | 可选，绑定 vehicle/from/原始 to/tz/bucket（不绑定 limit）；上下文不符为 400 |
+
+`query` 回显 vehicle_id、规范化 from、**裁剪后实际有效** to、tz、bucket、`filters={}`、
+`time_basis=window_start`；`as_of` 为 UTC 生成时刻。
+
+窗口构造：事件取同车行程与充电会话，按开始时间、类型、ID 排稳定序；候选窗口是相邻事件
+「前事件 end → 后事件 start」的间隔，并检查**所有**事件实际跨度——任何事件重叠、进行中/不完整
+事件穿过间隔都排除该窗口，不会先丢掉进行中事件再拼出虚假长窗口。仅窗口 start 落入 `[from,to)`
+归期；范围前后相邻事件只作边界上下文；窗口 end 可晚于 to，但必须 ≤ `as_of` 且已发生。最后一
+个已完成事件之后到 `as_of` 的开放尾段单列计入 `open_windows`，`quality=open_window`、
+`included=false`、不输出最终 SOC 变化。
+
+端点（精确、可追溯、不外推、不用最近历史点填充）：
+
+| 端点 | SOC 来源 | odometer 来源 | rated range（仅证据） |
+|---|---|---|---|
+| 行程边界 | `start/end_position_id` 指向的**同车**位置点 `battery_level`，位置点时刻必须与事件边界一致 | 同一端点位置点 `odometer` | 同一位置点 `rated_battery_range_km` |
+| 充电 start | 会话 `start_battery_level` | `position_id` 位置点（同车、同 `start_date`）`odometer` | 会话 `start_rated_range_km` |
+| 充电 end | 会话 `end_battery_level` | 同车在 `end_date` 同一时刻的位置点（多条取 ID 最大）`odometer`；**不用充电开始位置冒充** | 会话 `end_rated_range_km` |
+
+SOC 需在 `[0,100]`（0 有效），单位 pp；odometer/rated range 单位 km。每个端点在 items 里给出
+`soc`/`odometer_km`/`rated_range_km`（可空）、`soc_source`/`odometer_source`（来源枚举或 null）、
+`position_id`、`raw_time`（来源对应的原始边界时刻）。
+
+有效窗口：`duration ≥ 1h`、端点完整、里程差有限且 `abs(end-start) < 1km`（阈值独占）。里程差为
+负但绝对值未超阈值时保留原值并置 `negative_odometer_change=true` 作诊断。排除原因按下列**公开
+固定优先级**计唯一原因、可加和（`excluded_by_reason` 之和 = `excluded_windows`）：
+
+1. `same_moment_gap`（相同时刻间隔）
+2. `invalid_time_order`（时间顺序无效，前事件 end 晚于后事件 start）
+3. `event_overlap`（任一事件实际跨度重叠/穿过间隔，含进行中事件）
+4. `ambiguous_states`（窗口内两个状态区间正长度重叠）
+5. `missing_soc`（端点 SOC 缺失、越界或行程位置点时刻与边界不一致）
+6. `missing_odometer`（缺精确端点里程，含充电 end 无 `end_date` 位置点）
+7. `odometer_change`（里程差有限但 `abs ≥ 1km`）
+8. `insufficient_duration`（端点/里程均可信但时长 < 1h）
+
+状态：`states` 区间裁到窗口取交，累计 online/asleep/offline；开放状态区间（`end_date IS NULL`）
+不推断终点，其相关时长与未覆盖时长一并计入 unknown。端点可信但状态覆盖不全时窗口仍有效，
+`quality=partial_state_coverage` 并给明确 `unknown_hours`；无状态不伪造状态。四个状态小时之和 =
+窗口 `duration_hours`。
+
+输出与聚合（`totals` 与每个 `buckets` 同形，且**独立于 limit 与 cursor**）：
+
+| 字段 | 语义 / 单位 |
+|---|---|
+| candidate_windows / valid_windows / excluded_windows / open_windows | 候选（=有效+排除，仅闭合）、有效、排除、开放尾段计数 |
+| observed_hours | 有效窗口时长之和（= 四状态小时之和），h |
+| soc_change_pp | 有效窗口 `end-start` 之和，pp；无有效窗口为 null（不展示 0 损耗），有效总变化为 0 是真实零变化 |
+| soc_change_pp_per_24h | `sum(change)/sum(valid hours)×24`（不平均各窗口速率），零分母 null |
+| online/asleep/offline/unknown_hours | 有效窗口对应状态小时合计，h |
+| online/asleep/offline/unknown_share | 份额，分母为有效窗口小时（observed_hours），零分母 null；离线≠休眠、在线≠哨兵/空调 |
+| excluded_by_reason | 上列 8 个原因的计数对象，恒含全部键（缺省 0） |
+
+单窗口 `items` 覆盖所有候选窗口（含被排除与开放尾段），按 `window_start DESC` + 前后事件类型/ID
+稳定排序，含 `window_id`（`前事件type:id~后事件type:id`，开放尾段以 `~open` 结尾）、`start_event`/
+`end_event`（开放尾段 end_event 为 null）、UTC `window_start`/`window_end`、`duration_hours`、`start`/
+`end` 两个端点对象、`soc_change_pp`（保留正/负/零）、`soc_change_pp_per_24h`（仅有效窗口，否则
+null）、`odometer_change_km`、`negative_odometer_change`、四状态小时、`quality`
+（`complete`/`partial_state_coverage`/`open_window`/`excluded`）、`exclusion_reason`、`included`
+（仅参与聚合的有效窗口为 true）。`matched_windows` 是完整匹配集计数，所有页合起来不重不漏；
+`next_cursor` 绑定请求上下文。`status`：无闭合候选 `no_records`，有候选但无有效窗口
+`insufficient_data`，有有效窗口 `available`，缺列 `unsupported`。

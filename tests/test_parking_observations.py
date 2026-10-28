@@ -1033,3 +1033,45 @@ async def test_charging_end_without_exact_position_is_missing_odometer(client, d
     assert w2["start"]["soc"] == 90
     assert w2["start"]["odometer_km"] is None
     assert body["totals"]["excluded_by_reason"]["missing_odometer"] == 1
+
+
+async def test_charging_end_odometer_uses_highest_id_position_at_end_date(client, db):
+    await _drive(
+        db,
+        900,
+        _dt("2026-03-10T08:00"),
+        _dt("2026-03-10T09:00"),
+        sbl=80,
+        sobl=1000.0,
+        ebl=78,
+        eobl=1020.0,
+    )
+    # Charging end position (id 2109101) carries a decoy odometer; a higher-id position at the
+    # exact end_date (id 2109105) must win per the "multiple => highest id" rule.
+    await _charge(
+        db,
+        910,
+        _dt("2026-03-10T11:00"),
+        _dt("2026-03-10T12:00"),
+        sbl=77,
+        ebl=90,
+        odo_start=1020.5,
+        odo_end=9999.0,
+    )
+    await _pos(db, 2_109_105, _dt("2026-03-10T12:00"), bl=90, odo=1020.6)
+    await _drive(
+        db,
+        901,
+        _dt("2026-03-10T14:00"),
+        _dt("2026-03-10T15:00"),
+        sbl=89,
+        sobl=1020.7,
+        ebl=88,
+        eobl=1040.0,
+    )
+    body = (await client.get(URL, params=_params())).json()
+    by_id = {w["window_id"]: w for w in body["items"] if w["end_event"]}
+    w2 = by_id["charging_session:910~drive:901"]
+    assert w2["start"]["odometer_km"] == pytest.approx(1020.6)  # highest id, not the 9999.0 decoy
+    assert w2["start"]["position_id"] == 2_109_105
+    assert w2["included"] is True

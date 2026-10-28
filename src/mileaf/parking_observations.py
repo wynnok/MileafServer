@@ -8,6 +8,7 @@ endpoints only, no extrapolation, no kWh derivation, no sentinel/HVAC/fault infe
 
 import hashlib
 import json
+import math
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -481,7 +482,11 @@ def _build_windows(
             reason = "missing_soc"
         elif start_ep.odometer_km is None or end_ep.odometer_km is None:
             reason = "missing_odometer"
-        elif odo_change is None or abs(odo_change) >= MAX_ABS_ODOMETER_CHANGE_KM:
+        elif (
+            odo_change is None
+            or not math.isfinite(odo_change)
+            or abs(odo_change) >= MAX_ABS_ODOMETER_CHANGE_KM
+        ):
             reason = "odometer_change"
         elif duration_seconds < MIN_DURATION_SECONDS:
             reason = "insufficient_duration"
