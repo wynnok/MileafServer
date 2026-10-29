@@ -24,9 +24,9 @@ async def test_meta_contract(client):
     assert {
         key: value
         for key, value in body.items()
-        if key not in {"charging_experience", "statistics_insights"}
+        if key not in {"charging_experience", "statistics_insights", "owner_experience"}
     } == {
-        "version": "0.3.0",
+        "version": "0.4.0",
         "teslamate_schema_version": 20260808090000,
         "schema_ok": True,
         "tested": True,

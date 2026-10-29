@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from mileaf.dependencies import get_pool
 from mileaf.queries.charging_fields import ChargingCapabilities, charging_capabilities
+from mileaf.queries.owner_fields import OwnerCapabilities, owner_capabilities
 from mileaf.queries.statistics_fields import StatisticsCapabilities, statistics_capabilities
 from mileaf.units import UnitSettings, get_units
 
@@ -30,6 +31,7 @@ class Meta(BaseModel):
     source_unit_of_length: Literal["km", "mi"]
     charging_experience: ChargingCapabilities
     statistics_insights: StatisticsCapabilities
+    owner_experience: OwnerCapabilities
     freshness: Freshness
 
 
@@ -52,6 +54,7 @@ async def meta(
         tested=compatibility.tested,
         charging_experience=charging_capabilities(compatibility.charging_columns),
         statistics_insights=statistics_capabilities(compatibility.statistics_columns),
+        owner_experience=owner_capabilities(compatibility.owner_columns),
         source_unit_of_length=units.source_unit_of_length,
         freshness=Freshness(**dict(row)),
     )

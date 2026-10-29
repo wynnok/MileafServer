@@ -32,6 +32,7 @@ class DrivingFilters(BaseModel):
     outside_temp_max_c: float | None = None
     energy_status: Literal["known", "unknown"] | None = None
     completed_only: bool = False
+    destination_location_id: str | None = None
 
 
 class DrivingQueryEcho(BaseModel):
@@ -72,6 +73,7 @@ def driving_filters(
     outside_temp_max_c: float | None = None,
     energy_status: Literal["known", "unknown"] | None = None,
     completed_only: bool = False,
+    destination_location_id: str | None = None,
 ) -> DrivingFilters:
     """One validation for every route that accepts the shared driving filters."""
     values = (distance_min_km, distance_max_km, outside_temp_min_c, outside_temp_max_c)
@@ -90,6 +92,7 @@ def driving_filters(
         outside_temp_max_c=outside_temp_max_c,
         energy_status=energy_status,
         completed_only=completed_only,
+        destination_location_id=destination_location_id,
     )
 
 
@@ -106,6 +109,7 @@ def driving_parameters(
     outside_temp_max_c: float | None = None,
     energy_status: Literal["known", "unknown"] | None = None,
     completed_only: bool = False,
+    destination_location_id: str | None = None,
     cursor: str | None = None,
     limit: str = "20",
 ) -> DrivingQuery:
@@ -120,6 +124,7 @@ def driving_parameters(
         outside_temp_max_c=outside_temp_max_c,
         energy_status=energy_status,
         completed_only=completed_only,
+        destination_location_id=destination_location_id,
     )
     return DrivingQuery(
         DrivingQueryEcho(
@@ -164,6 +169,7 @@ def match_source(
         filters.outside_temp_max_c,
         filters.energy_status,
         filters.completed_only,
+        filters.destination_location_id,
     ]
     matched = (
         f"SELECT * FROM ({source}) driving WHERE car_id=$1 "
@@ -180,7 +186,11 @@ def match_source(
         "AND ($8::text IS NULL OR CASE $8 WHEN 'known' "
         "THEN ended_at IS NOT NULL AND energy_kwh IS NOT NULL "
         "ELSE ended_at IS NULL OR energy_kwh IS NULL END) "
-        "AND (NOT $9::boolean OR ended_at IS NOT NULL)"
+        "AND (NOT $9::boolean OR ended_at IS NOT NULL) "
+        "AND ($10::text IS NULL OR rtrim(encode(convert_to(CASE "
+        "WHEN end_geofence_id IS NOT NULL THEN 'geofence:'||end_geofence_id "
+        "WHEN end_address_id IS NOT NULL THEN 'address:'||end_address_id "
+        "ELSE 'unlocated' END,'UTF8'),'base64'),'=')=$10)"
     )
     return matched, args
 

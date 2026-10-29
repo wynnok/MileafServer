@@ -772,3 +772,14 @@ summary、distance_bins 及 temperature_bins。温度来源 drives.outside_temp_
 独立 coverage 解释各有效集；sample_status=adequate 要求配对≥5趟且≥50km，
 否则 sparse（无有效配对为 insufficient_data）。阈值 provisional，不声称因果或排名。
 evidence_filter 可用于完整行程列表；最多100个非空温度组，超限400，业务查询最多2次。
+
+## 车主体验增量（0.4.0 / owner-experience-v1）
+
+契约见 [车主体验增量规格](../product/owner-experience-spec.md)，当前运行时快照为
+[openapi-0.4.0.json](openapi-0.4.0.json)，保留0.1/0.2/0.3既有口径。
+`meta.owner_experience.features` 逐项声明支持情况；可选列缺失不会让旧API失效。
+新增 battery-history、activity-timeline、environment-history、vehicle-observations/latest、
+driving-locations、visited-areas、charging-analysis（view=habits）、software-updates，
+并扩展drive series、详情爬升/下降、speed-histogram及行程destination_location_id筛选。
+每个新增端点的单位、来源、有效集、阈值、分页与查询预算以增量规格为准。
+真实站点/Grafana验收仍由 #28 独立承担，synthetic_only 不代表生产验证。

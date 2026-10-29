@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import asyncpg
 
 from mileaf.queries.charging_fields import OPTIONAL_CHARGING_COLUMNS
+from mileaf.queries.owner_fields import OWNER_REQUIREMENTS
 from mileaf.queries.statistics_fields import STATISTICS_REQUIREMENTS
 
 # PostgreSQL udt_name, so enum renames between releases do not affect text casts.
@@ -29,6 +30,7 @@ class Compatibility:
     tested: bool
     charging_columns: frozenset[tuple[str, str]]
     statistics_columns: frozenset[tuple[str, str]] = frozenset()
+    owner_columns: frozenset[tuple[str, str]] = frozenset()
 
 
 async def probe_database(pool: asyncpg.Pool) -> Compatibility:
@@ -78,6 +80,13 @@ async def probe_database(pool: asyncpg.Pool) -> Compatibility:
         frozenset(
             (table, column)
             for tables in STATISTICS_REQUIREMENTS.values()
+            for table, columns in tables.items()
+            for column, types in columns.items()
+            if available.get((table, column)) in types
+        ),
+        frozenset(
+            (table, column)
+            for tables in OWNER_REQUIREMENTS.values()
             for table, columns in tables.items()
             for column, types in columns.items()
             if available.get((table, column)) in types

@@ -25,6 +25,11 @@ from mileaf.driving_analysis import router as driving_analysis_router
 from mileaf.errors import APIError, ErrorCode
 from mileaf.health import router as health_router
 from mileaf.meta import router as meta_router
+from mileaf.owner_habits import router as owner_habits_router
+from mileaf.owner_history import router as owner_history_router
+from mileaf.owner_locations import router as owner_locations_router
+from mileaf.owner_software import router as owner_software_router
+from mileaf.owner_speed import router as owner_speed_router
 from mileaf.parking_observations import router as parking_observations_router
 from mileaf.queries import charging as charging  # Register shared AC/DC requirements.
 from mileaf.queries import energy as energy  # Register shared drive-energy requirements.
@@ -37,6 +42,11 @@ from mileaf.units import initialize_units
 from mileaf.vehicles import router as vehicles_router
 
 ROUTERS = [
+    owner_history_router,
+    owner_speed_router,
+    owner_locations_router,
+    owner_habits_router,
+    owner_software_router,
     health_router,
     auth_router,
     meta_router,

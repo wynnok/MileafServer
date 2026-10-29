@@ -324,7 +324,7 @@ async def test_driving_evidence_openapi_declares_filters_and_echo(client):
         assert name in params
     page = schema["components"]["schemas"]["DrivePage"]
     assert {"query", "as_of", "matched_drives"} <= set(page["required"])
-    frozen = json.loads((Path(__file__).parents[1] / "docs/api/openapi-0.3.0.json").read_text())
+    frozen = json.loads((Path(__file__).parents[1] / "docs/api/openapi-0.4.0.json").read_text())
     assert schema == frozen
 
 

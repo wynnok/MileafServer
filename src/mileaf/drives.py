@@ -25,6 +25,7 @@ from mileaf.queries.driving_query import (
 )
 from mileaf.queries.energy import consumption_wh_km_sql, energy_kwh_sql
 from mileaf.queries.locations import Location, LocationRef, fetch_locations
+from mileaf.queries.owner_fields import POSITION_FIELDS
 from mileaf.queries.pagination import decode_cursor, fetch_page
 from mileaf.queries.parameters import ResourceID, ResourceRoute
 from mileaf.queries.series import fetch_series
@@ -51,6 +52,9 @@ class Drive(BaseModel):
 
 
 class DriveDetail(Drive):
+    ascent_m: float | None = None
+    descent_m: float | None = None
+    elevation_quality: dict[str, str] = {}
     vehicle_id: int
     speed_max_kmh: float | None
     speed_avg_kmh: float | None
@@ -81,7 +85,9 @@ DRIVE_SOURCE = f"""
 
 
 async def drive_models(
-    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy, rows: list[asyncpg.Record]
+    db: asyncpg.Connection | asyncpg.pool.PoolConnectionProxy,
+    rows: list[asyncpg.Record],
+    columns: frozenset[tuple[str, str]],
 ) -> list[DriveDetail]:
     refs = [
         LocationRef(row[f"{end}_position_id"], row[f"{end}_address_id"], row[f"{end}_geofence_id"])
@@ -94,6 +100,24 @@ async def drive_models(
         finished = row["ended_at"] is not None
         result.append(
             DriveDetail(
+                ascent_m=row.get("ascent")
+                if ("drives", "ascent") in columns
+                and row.get("ascent") is not None
+                and row["ascent"] >= 0
+                else None,
+                descent_m=row.get("descent")
+                if ("drives", "descent") in columns
+                and row.get("descent") is not None
+                and row["descent"] >= 0
+                else None,
+                elevation_quality={
+                    name: "unsupported"
+                    if ("drives", name) not in columns
+                    else "available"
+                    if row[name] is not None and row[name] >= 0
+                    else "insufficient_data"
+                    for name in ("ascent", "descent")
+                },
                 id=row["id"],
                 vehicle_id=row["vehicle_id"],
                 started_at=row["started_at"],
@@ -133,7 +157,11 @@ async def drive_detail(
             rows = await fetch_rows(db, DRIVE_SOURCE + " WHERE d.id=$1", drive_id)
             if not rows:
                 raise APIError(404, ErrorCode.NOT_FOUND, "Resource not found")
-            return (await drive_models(db, rows))[0].model_dump_json().encode()
+            return (
+                (await drive_models(db, rows, request.app.state.compatibility.owner_columns))[0]
+                .model_dump_json()
+                .encode()
+            )
 
     return await cached_response(
         request, cache=cache, key=(request.url.path, request.url.query), render=render, ttl=30
@@ -181,7 +209,7 @@ async def drive_list(
                 cursor=legacy_cursor,
                 limit=params.limit,
             )
-            items = await drive_models(db, page.rows)
+            items = await drive_models(db, page.rows, request.app.state.compatibility.owner_columns)
             next_cursor = None
             if page.next_cursor is not None:
                 timestamp, identifier = decode_cursor(page.next_cursor)
@@ -211,6 +239,13 @@ class DrivePoint(BaseModel):
     speed_kmh: float | None = None
     battery_level: int | None = None
     elevation_m: float | None = None
+    power_kw: float | None = None
+    inside_temp_c: float | None = None
+    outside_temp_c: float | None = None
+    tpms_fl_bar: float | None = None
+    tpms_fr_bar: float | None = None
+    tpms_rl_bar: float | None = None
+    tpms_rr_bar: float | None = None
 
 
 class DriveSeries(BaseModel):
@@ -218,6 +253,7 @@ class DriveSeries(BaseModel):
     resolution: Literal["empty", "server_sampled"]
     points: int
     series: list[DrivePoint]
+    field_support: dict[str, bool] = {}
 
 
 @router.get(
@@ -232,7 +268,18 @@ async def drive_series(
     fields: str = "speed",
     points: str = "200",
 ) -> Response:
-    if any(field not in {"speed", "battery", "elevation"} for field in fields.split(",")):
+    extra = {
+        "power": "power_kw",
+        "inside_temperature": "inside_temp_c",
+        "outside_temperature": "outside_temp_c",
+        **{f"tpms_{wheel}": f"tpms_{wheel}_bar" for wheel in ("fl", "fr", "rl", "rr")},
+    }
+    available = request.app.state.compatibility.owner_columns
+    support = {
+        name: ("positions", POSITION_FIELDS[output][0]) in available
+        for name, output in extra.items()
+    }
+    if any(field not in {"speed", "battery", "elevation", *extra} for field in fields.split(",")):
         raise APIError(400, ErrorCode.INVALID_REQUEST, "Invalid fields")
 
     async def render() -> bytes:
@@ -247,6 +294,10 @@ async def drive_series(
                 table="positions",
                 time_column="date",
                 columns={
+                    **{
+                        name: POSITION_FIELDS[output][0] if support[name] else "NULL::numeric"
+                        for name, output in extra.items()
+                    },
                     "speed": "speed",
                     "battery": "battery_level",
                     "elevation": "elevation",
@@ -259,7 +310,12 @@ async def drive_series(
                 required_fields=("lat", "lon"),
                 points=points,
             )
-        names = {"speed": "speed_kmh", "battery": "battery_level", "elevation": "elevation_m"}
+        names = {
+            "speed": "speed_kmh",
+            "battery": "battery_level",
+            "elevation": "elevation_m",
+            **extra,
+        }
         result = []
         for point in sampled.series:
             data = {names.get(key, key): value for key, value in point.items()}
@@ -268,7 +324,11 @@ async def drive_series(
             result.append(DrivePoint(**data))
         return (
             DriveSeries(
-                drive_id=drive_id, resolution=sampled.resolution, points=len(result), series=result
+                drive_id=drive_id,
+                resolution=sampled.resolution,
+                points=len(result),
+                series=result,
+                field_support={name: support.get(name, True) for name in fields.split(",")},
             )
             .model_dump_json(exclude_unset=True)
             .encode()

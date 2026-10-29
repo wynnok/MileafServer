@@ -425,9 +425,9 @@ async def test_frozen_openapi_exposes_charging_contract(client):
 
     schema = (await client.get("/openapi.json")).json()
     api = Path(__file__).parents[1] / "docs/api"
-    frozen = api / "openapi-0.3.0.json"
+    frozen = api / "openapi-0.4.0.json"
     assert schema == json.loads(frozen.read_text())
-    assert schema["info"]["version"] == "0.3.0"
+    assert schema["info"]["version"] == "0.4.0"
     assert "/v1/vehicles/{vehicle_id}/charging-locations" in schema["paths"]
     echo = schema["components"]["schemas"]["ChargingQueryEcho"]["properties"]
     assert "from" in echo and "from_" not in echo
