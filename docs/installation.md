@@ -22,7 +22,7 @@ USAGE 和逐表 SELECT，显式撤销 private.tokens 与 private schema 权限�
 单独对 reader 的 REVOKE 无法抵消它；需管理员先检查并调整原有授权，再启动 Mileaf。
 指南中的 REVOKE 不会自动修改其他角色或 PUBLIC 的共享权限。
 
-## 2. 构建镜像并追加 service
+## 2. 使用 Compose 部署
 
 从本仓库根目录构建当前主机架构的本地镜像：
 
@@ -35,10 +35,14 @@ amd64 与 arm64 构建可分别加 `--platform linux/amd64`、`--platform linux/
 缓存及 buildx 客户端元数据保留在项目内；不安装宿主机全局依赖。
 镜像仅复制白名单构建输入，运行阶段只有已安装应用及运行依赖，以 UID/GID 10001 运行。
 
-将 [compose.mileaf.yml](../compose.mileaf.yml) 中的 `mileaf` service 及 `mileaf-state`
-顶层卷定义追加到现有 compose 文件，保留现有 TeslaMate service 与网络设置。
-Mileaf 与数据库应处于同一 compose 网络；如使用自定义 networks，给 mileaf 加入该网络。
-此片段也可通过 `docker compose -f <现有文件> -f compose.mileaf.yml ...` 合并使用。
+仓库只提供 [docker-compose.yml](../docker-compose.yml)，默认独立部署并加入已有的
+`docker_bridge_net` 外部网络，不发布宿主机端口。数据库与容器反向代理应能通过该网络
+访问 Mileaf；如果现有网络名称不同，请同步修改 service 与顶层 `networks` 定义。
+数据库主机名使用共享网络内可解析的名称。
+
+若需追加到现有 TeslaMate compose，可复制其中的 `mileaf` service 与 `mileaf-state`
+顶层卷定义，按现有网络调整 service 的 `networks`。使用已构建镜像时可移除 `build: .`；
+需要构建时，该路径必须指向本仓库根目录。
 
 在 compose 环境中设置 `MILEAF_DATABASE_DSN`：
 
@@ -48,19 +52,19 @@ postgresql://mileaf_reader:YOUR_URL_ENCODED_DB_PASSWORD@database:5432/teslamate
 
 密码中的特殊字符须按 URL 编码。可使用受限权限的部署环境文件供 compose 插值；不要提交真实
 凭据，也不要将含凭据的 compose 展开结果或容器配置发到日志。应用本身不自动读取 `.env`。
-片段默认使用本地 `mileaf-server:local`；若自行管理镜像仓库，通过 compose 的
+配置默认使用本地 `mileaf-server:local`；若自行管理镜像仓库，通过 compose 的
 `MILEAF_IMAGE` 选择已发布的具体版本（本项目在此阶段不发布镜像仓库）。
 
 ```sh
-docker compose up -d mileaf
+docker compose up -d --wait mileaf
 docker compose ps mileaf
-curl --fail http://127.0.0.1:8080/v1/health
+docker compose exec -T mileaf python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/v1/health').read().decode())"
 ```
 
 就绪后健康状态为 healthy，响应为 `{"status":"ok","version":"..."}`。
 健康检查会实际访问数据库；缺少必需 DSN 时进程退出，错误仅列出变量名。
 命名卷首次创建时沿用镜像 `/data` 的 UID/GID 10001 所有权；自备 bind mount 则需提前
-让 UID/GID 10001 可写。默认只向宿主机回环地址发布 8080。
+让 UID/GID 10001 可写。
 
 ## 3. 初始化、登录与重置
 
@@ -85,7 +89,13 @@ docker compose up -d mileaf
 ## 4. 远程接入（二选一）
 
 **Tailscale（推荐）**：在宿主机与手机上自行安装 Tailscale，加入同一 tailnet，限制只有
-自己的设备可访问服务。保留 compose 的回环绑定，在宿主机启用 Serve：
+自己的设备可访问服务。在 `mileaf` service 中加入以下回环端口绑定，再执行
+`docker compose up -d mileaf`，并在宿主机启用 Serve：
+
+```yaml
+ports:
+  - "127.0.0.1:8080:8080"
+```
 
 ```sh
 tailscale serve --bg http://127.0.0.1:8080
@@ -97,7 +107,8 @@ Tailscale IP，通过 `http://<tailscale-ip>:8080` 连接，并由 tailnet 访�
 参见 [Tailscale Serve 官方说明](https://tailscale.com/docs/reference/tailscale-cli/serve)。
 
 **公网 IP + 自有 TLS**：自备域名或客户端信任且与访问名称匹配的证书，由现有反向代理在
-443 终止 TLS，再转发至 `http://127.0.0.1:8080`；公网仅开放代理入口，不开放容器的 8080。
+443 终止 TLS。宿主机代理需添加上述回环端口绑定，再转发至 `http://127.0.0.1:8080`；
+公网仅开放代理入口，不开放容器的 8080。
 例如在已有 Nginx TLS server 中添加：
 
 ```nginx
@@ -128,7 +139,7 @@ Mileaf 不负责证书、反向代理、Tailscale 安装或隧道。若 TLS 代�
 
 与 `mileaf.config.Settings` 对应，不新增运行期配置：
 
-片段显式传入 DSN、状态路径与监听地址；其余可选项需要按需加入 mileaf service 的
+Compose 显式传入 DSN、状态路径、监听地址与代理信任 IP；其余可选项需要按需加入 mileaf service 的
 `environment` 才会传入容器，仅设置宿主机的 compose 插值环境不会自动注入它们。
 
 | 变量 | 必填 / 默认 | 说明 |

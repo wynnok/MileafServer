@@ -83,6 +83,7 @@ async def test_documented_reader_and_compose_are_healthy(deployment_image, db, a
     override.write_text(
         'services:\n  mileaf:\n    ports: !override ["127.0.0.1::8080"]\n'
         "    healthcheck:\n      interval: 1s\n      start_period: 1s\n"
+        "networks: !override\n  docker_bridge_net: {}\n"
     )
     environment = {
         **os.environ,
@@ -95,7 +96,7 @@ async def test_documented_reader_and_compose_are_healthy(deployment_image, db, a
         "--project-name",
         project,
         "-f",
-        str(ROOT / "compose.mileaf.yml"),
+        str(ROOT / "docker-compose.yml"),
         "-f",
         str(override),
     ]
