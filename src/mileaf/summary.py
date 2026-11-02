@@ -14,6 +14,7 @@ from mileaf.database import fetch_rows
 from mileaf.dependencies import get_cache, get_now, get_pool
 from mileaf.meta import Freshness
 from mileaf.probes import CAPABILITIES
+from mileaf.queries.current_charging import current_charging_join
 from mileaf.queries.energy import consumption_wh_km_sql, energy_kwh_sql
 from mileaf.queries.parameters import ResourceRoute
 from mileaf.queries.time import validate_timezone, window_sql
@@ -66,7 +67,7 @@ class Summary(BaseModel):
     freshness: Freshness
 
 
-CURRENT_SOURCE = """
+CURRENT_SOURCE = f"""
     SELECT p.id AS position_id, p.battery_level, p.odometer,
         CASE WHEN s.preferred_range::text='ideal' THEN p.ideal_battery_range_km
              ELSE p.rated_battery_range_km END AS range_km,
@@ -77,15 +78,15 @@ CURRENT_SOURCE = """
         p.date AT TIME ZONE 'UTC' AS last_position_at,
         st.start_date AT TIME ZONE 'UTC' AS last_state_at,
         (SELECT charger_power FROM charges WHERE charging_process_id=cp.id
+           AND date >= cp.start_date
+           AND date <= $2::timestamptz AT TIME ZONE 'UTC'
          ORDER BY date DESC,id DESC LIMIT 1) AS charging_power_kw
     FROM cars c CROSS JOIN settings s
     LEFT JOIN LATERAL (SELECT * FROM positions WHERE car_id=c.id
         ORDER BY date DESC,id DESC LIMIT 1) p ON true
     LEFT JOIN LATERAL (SELECT state,start_date FROM states WHERE car_id=c.id
         ORDER BY start_date DESC,id DESC LIMIT 1) st ON true
-    LEFT JOIN LATERAL (SELECT id,start_date FROM charging_processes
-        WHERE car_id=c.id AND end_date IS NULL
-        ORDER BY start_date DESC,id DESC LIMIT 1) cp ON true
+    {current_charging_join("$2")}
     WHERE c.id=$1
 """
 
@@ -120,7 +121,7 @@ async def summary(
             )
 
         current, today, month, drives, sessions, firmware = await asyncio.gather(
-            query(CURRENT_SOURCE, vehicle.id),
+            query(CURRENT_SOURCE, vehicle.id, now),
             query(period_query("today"), vehicle.id, now, tz),
             query(period_query("month"), vehicle.id, now, tz),
             query(

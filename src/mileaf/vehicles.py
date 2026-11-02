@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from starlette.responses import Response
 
 from mileaf.cache import conditional_response
-from mileaf.dependencies import VehicleID, get_pool
+from mileaf.dependencies import VehicleID, get_now, get_pool
 from mileaf.errors import APIError, ErrorCode
 from mileaf.meta import Freshness
 from mileaf.probes import CAPABILITIES
+from mileaf.queries.current_charging import current_charging_join
 from mileaf.units import UnitSettings, distance_km, get_units
 
 CAPABILITIES["vehicles"] = {
@@ -91,10 +92,12 @@ async def get_vehicle_or_404(
 @router.get("/vehicles", response_model=list[Vehicle])
 async def vehicles(
     request: Request,
+    now: Annotated[datetime, Depends(get_now)],
     pool: Annotated[asyncpg.Pool, Depends(get_pool)],
     units: Annotated[UnitSettings, Depends(get_units)],
 ) -> Response:
-    rows = await pool.fetch("""
+    rows = await pool.fetch(
+        f"""
         SELECT c.id, c.name, c.model, right(c.vin,4) AS vin_suffix,
             CASE WHEN cp.id IS NOT NULL THEN 'charging' ELSE s.state::text END AS state,
             (CASE WHEN cp.id IS NOT NULL THEN cp.start_date ELSE s.start_date END)
@@ -114,13 +117,11 @@ async def vehicles(
             SELECT id, date, battery_level, rated_battery_range_km, ideal_battery_range_km
             FROM positions WHERE car_id=c.id ORDER BY date DESC, id DESC LIMIT 1
         ) p ON true
-        LEFT JOIN LATERAL (
-            SELECT id, start_date FROM charging_processes
-            WHERE car_id=c.id AND end_date IS NULL
-            ORDER BY start_date DESC, id DESC LIMIT 1
-        ) cp ON true
+        {current_charging_join("$1")}
         ORDER BY c.inserted_at, c.id
-    """)
+    """,
+        now,
+    )
     result = [
         Vehicle(
             id=row["id"],

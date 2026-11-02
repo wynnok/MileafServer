@@ -783,3 +783,15 @@ driving-locations、visited-areas、charging-analysis（view=habits）、softwar
 并扩展drive series、详情爬升/下降、speed-histogram及行程destination_location_id筛选。
 每个新增端点的单位、来源、有效集、阈值、分页与查询预算以增量规格为准。
 真实站点/Grafana验收仍由 #28 独立承担，synthetic_only 不代表生产验证。
+
+### 当前充电状态
+
+车辆列表与概览共用当前充电判断：先取截至请求时刻、按开始时间和 ID
+倒序的最新充电会话，再确认其结束时间为空。已完成的新会话不能使旧的
+未结束会话重新成为当前会话。候选开始后若已有新行程，或从候选开始时刻起
+有离线/休眠状态，则不覆盖车辆状态。更新的 online 状态本身不否定充电。
+概览充电功率仅取有效候选从开始至请求时刻的最后采样；没有候选或采样则为 null。
+
+这是基于上游已记录证据的状态，不保证车辆实时状态；上游停止采集且没有后续
+反证时无法识别实际结束，仍须结合 freshness 判断。历史会话的 ended_at/is_active
+语义保持不变，不补写或修复 TeslaMate 数据。

@@ -124,6 +124,7 @@ def test_capabilities_are_enumerable():
         "meta",
         "vehicles",
         "drive_energy",
+        "current_charging",
         "charging_classification",
         "locations",
         "statistics",
