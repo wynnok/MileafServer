@@ -7,6 +7,10 @@ TeslaMate 数据的只读 API 层，供 Mileaf Mobile 调用。运行环境为 P
 Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 [自托管安装指南](docs/installation.md)。
 
+新建完整站点可运行 `bash deploy/install.sh`，一键部署 TeslaMate、PostgreSQL 和 Mileaf，
+交互选择 MQTT / Grafana；Docker 自动安装范围、配置与使用方法见
+[一键安装指南](docs/one-click-installation.md)。
+
 使用 `uv sync` 安装项目依赖。按 `.env.example` 将配置注入环境后，运行
 `uv run mileaf-server`；服务只读取环境变量，不自动加载 `.env`。
 `GET /v1/health` 匿名检查数据库连接，数据库不可达时返回 503。
