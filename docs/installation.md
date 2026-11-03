@@ -170,3 +170,6 @@ build 命令及 `up -d`。均保留 state 卷，不运行 TeslaMate migration。
 测试使用预拉取的 postgres:16-alpine、合成数据库和独立 compose 项目，不访问真实 TeslaMate。
 未构建本地镜像时部署测试会跳过；其余测试不依赖该镜像。
 构建方法参考 [uv Docker 官方指南](https://docs.astral.sh/uv/guides/integration/docker/)。
+
+
+> 2026-11-03 边界更新：默认只读，显式启用后允许补录已结束充电会话的缺失费用；唯一写入为 charging_processes.cost。规则、接口与最小权限见 docs/adr/0004-limited-charging-cost-writes.md，替代本文绝对只读的描述。

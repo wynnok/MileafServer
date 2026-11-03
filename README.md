@@ -43,3 +43,8 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 
 运行 `uv run ruff check`、`uv run mypy` 和 `uv run pytest`。
 数据库集成测试使用预先拉取的 `postgres:16-alpine` 镜像和 Docker。
+
+## 后续接口需求
+
+移动端整体复核提出的电量历史、环境与胎压、地点回顾、补能习惯、行驶过程和固件履历，见
+[车主体验接口交接](docs/mobile-api-proposals/owner-experience.md)。该文档是待实现需求，不表示接口已提供。

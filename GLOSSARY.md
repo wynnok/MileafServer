@@ -5,7 +5,7 @@
 | 术语 | 代码名 | 定义 | TeslaMate 对应 |
 |---|---|---|---|
 | 行笺 | Mileaf | 产品名，含 Mileaf Server 与 Mileaf Mobile | — |
-| Mileaf Server | mileaf-server | 本仓库：TeslaMate 的只读 API 层 | — |
+| Mileaf Server | mileaf-server | 本仓库：TeslaMate 的默认只读、有限费用补录 API 层 | — |
 | Mileaf Mobile | mileaf-mobile | Flutter 客户端，独立仓库 | — |
 | TeslaMate | — | 用户自托管的 Tesla 数据记录服务（Elixir + PostgreSQL + Grafana），是唯一数据源 | — |
 | 站点 | site | 一套 TeslaMate 部署及其全部数据；一个站点对应一个 Mileaf Server 实例 | 一个 `teslamate` 数据库 |
@@ -27,9 +27,12 @@
 | 时间线 | timeline | 把状态区间、行程、充电会话合并到一条按时间排列的轴上 | `states` + `drives` + `charging_processes` |
 | 数据新鲜度 | freshness | TeslaMate 最后一次写入数据的时间；Mileaf 的数据不可能比它更新 | `positions` / `states` 的 `MAX(date)` |
 | 指标口径 | metric definition | 一个数字的确切计算式与单位；同一口径在 App 与 Grafana 必须一致 | 见 `docs/product/v1-scope.md` |
-| 只读适配层 | read-only adapter | Mileaf Server 的架构定位：只 SELECT，不建表、不改结构、不复制数据 | — |
+| 有限写入适配层 | limited-write adapter | Mileaf Server 的架构定位：默认 SELECT，仅允许显式启用的费用补录，不建表、不改结构、不复制数据 | — |
 
 ## 命名约定
 
 - 产品中文名「行笺」，英文名「Mileaf」，代码与包名统一 `mileaf`。不要写成 Mileaf、MiLeaf、MileafApp 混用。
 - API 内部一律用本表的代码名（`drive`、`charging_session`、`position`、`state_segment`），不要直接暴露 TeslaMate 的表名给客户端。
+
+
+> 2026-11-03 边界更新：默认只读，显式启用后允许补录已结束充电会话的缺失费用；唯一写入为 charging_processes.cost。规则、接口与最小权限见 docs/adr/0004-limited-charging-cost-writes.md，替代本文绝对只读的描述。

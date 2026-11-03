@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException
 from mileaf.auth import AuthStore, require_bearer
 from mileaf.auth import router as auth_router
 from mileaf.cache import TTLCache
+from mileaf.charging_cost import router as charging_cost_router
 from mileaf.charging_locations import router as charging_locations_router
 from mileaf.charging_sessions import router as charging_sessions_router
 from mileaf.config import Settings
@@ -42,6 +43,7 @@ from mileaf.units import initialize_units
 from mileaf.vehicles import router as vehicles_router
 
 ROUTERS = [
+    charging_cost_router,
     owner_history_router,
     owner_speed_router,
     owner_locations_router,

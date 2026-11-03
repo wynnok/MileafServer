@@ -20,6 +20,7 @@ class TTLCache:
         self.ttl = ttl
         self.capacity = capacity
         self.clock = clock
+        self.generation = 0
         self.hits = 0
         self.misses = 0
         self.entries: OrderedDict[Hashable, tuple[float, bytes]] = OrderedDict()
@@ -45,6 +46,10 @@ class TTLCache:
         self.entries.move_to_end(key)
         while len(self.entries) > self.capacity:
             self.entries.popitem(last=False)
+
+    def invalidate(self) -> None:
+        self.generation += 1
+        self.entries.clear()
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -81,7 +86,8 @@ async def cached_response(
     """Callers declare HTTP/server TTL and a key containing all representation inputs."""
     body = cache.get(key) if ttl > 0 else None
     if body is None:
+        generation = cache.generation
         body = await render()
-        if ttl > 0:
+        if ttl > 0 and generation == cache.generation:
             cache.put(key, body, ttl=ttl)
     return conditional_response(request, body, ttl=ttl)

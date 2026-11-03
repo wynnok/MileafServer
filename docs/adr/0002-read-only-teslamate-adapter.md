@@ -1,6 +1,6 @@
 # ADR-0002: 只读直连 TeslaMate 数据库
 
-- 状态：Accepted
+- 状态：部分由 [ADR-0004](0004-limited-charging-cost-writes.md) 替代（有限费用补录），其他约束继续生效
 - 日期：2026-10-21
 
 ## 背景

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     max_concurrency: int = Field(default=4, ge=1)
     cache_ttl_seconds: int = Field(default=30, ge=0)
+    charging_cost_writes_enabled: bool = False
     cache_capacity: int = Field(default=256, ge=1)
 
     @field_validator("database_dsn")

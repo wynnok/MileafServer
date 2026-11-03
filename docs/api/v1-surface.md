@@ -47,7 +47,7 @@
 | GET | `/v1/health` | 匿名；`{"status":"ok","version":"..."}` |
 | GET | `/v1/meta` | 服务版本、TeslaMate migration 版本、`schema_ok`、`tested`、单位制固定 `metric`、`source_unit_of_length`、freshness |
 
-token 使用 32 字节密码学随机数的 base64url 编码，TTL 为 30 天，不刷新；过期返回 401。最多保留 10 个 token，超出时淘汰创建时间最早的 token。登录失败按 IP 限制为每分钟 5 次，超出返回 429。状态文件仅保存口令哈希、token 摘要及创建和过期时间，不保存明文 token（见 ADR-0003）。
+token 使用 32 字节密码学随机数的 base64url 编码，TTL 为 30 天，不刷新；过期返回 401。最多保留 10 个 token，超出时淘汰创建时间最早的 token。登录失败按 IP 限制为每分钟 5 次，超出返回 429。状态文件仅保存口令哈希、token 摘要及创建和过期时间，不保存明文 token（见 ADR-0004）。
 
 setup/login 的 JSON 请求体为 `{"password":"YOUR_ACCESS_PASSWORD"}`。setup 成功返回
 `{"status":"ok"}`；不足 10 字符返回 `400 invalid_request`。缺失、错误或过期 Bearer
@@ -795,3 +795,8 @@ driving-locations、visited-areas、charging-analysis（view=habits）、softwar
 这是基于上游已记录证据的状态，不保证车辆实时状态；上游停止采集且没有后续
 反证时无法识别实际结束，仍须结合 freshness 判断。历史会话的 ended_at/is_active
 语义保持不变，不补写或修复 TeslaMate 数据。
+
+
+## 充电费用补录
+
+`PATCH /v1/charging-sessions/{session_id}/cost`，Bearer 鉴权，显式启用。请求、响应、计算口径、冲突与部署授权见 [ADR-0004](../adr/0004-limited-charging-cost-writes.md)。
