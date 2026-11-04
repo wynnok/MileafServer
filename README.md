@@ -60,3 +60,5 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 ## 许可证
 
 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）。
+
+Copyright (C) 2026 wynnok
