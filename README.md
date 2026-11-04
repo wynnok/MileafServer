@@ -1,6 +1,7 @@
 # Mileaf Server（行笺服务端）
 
-TeslaMate 数据的只读 API 层，供 Mileaf Mobile 调用。运行环境为 Python 3.12。
+TeslaMate 数据的默认只读 API 层，供 Mileaf Mobile 调用；显式启用后允许补录已结束充电会话的缺失费用
+（[ADR-0004](docs/adr/0004-limited-charging-cost-writes.md)）。运行环境为 Python 3.12。
 
 ## 本地运行
 
@@ -15,7 +16,8 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 `uv run mileaf-server`；服务只读取环境变量，不自动加载 `.env`。
 `GET /v1/health` 匿名检查数据库连接，数据库不可达时返回 503。
 
-数据库应使用只读专用角色，连接池会额外设置只读事务与查询超时。
+数据库应使用只读专用角色，连接池会额外设置只读事务与查询超时；仅在启用充电费用补录时，
+额外授予 `charging_processes.cost` 的列级 `UPDATE` 并设置 `MILEAF_CHARGING_COST_WRITES_ENABLED=true`。
 已提供健康检查、单站点认证、元信息，以及车辆、概览、行程、充电会话与统计端点；
 单位与缓存原语由这些端点复用。
 
@@ -44,7 +46,17 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 运行 `uv run ruff check`、`uv run mypy` 和 `uv run pytest`。
 数据库集成测试使用预先拉取的 `postgres:16-alpine` 镜像和 Docker。
 
-## 后续接口需求
+## 接口增量与冻结契约
 
-移动端整体复核提出的电量历史、环境与胎压、地点回顾、补能习惯、行驶过程和固件履历，见
-[车主体验接口交接](docs/mobile-api-proposals/owner-experience.md)。该文档是待实现需求，不表示接口已提供。
+除 v1 面（[接口口径](docs/api/v1-surface.md)）外，已交付三批增量（默认只读），各自带冻结 OpenAPI 快照：
+
+- `0.2.0` 充电体验（覆盖、配对均价、地点账目、过程质量）：[契约](docs/product/charging-experience-spec.md)、[openapi-0.2.0.json](docs/api/openapi-0.2.0.json)；
+- `0.3.0` 统计洞察（驾驶覆盖、用车节奏、温度关联、额定续航、闭合停放窗口）：[openapi-0.3.0.json](docs/api/openapi-0.3.0.json)、[验证记录](docs/testing/statistics-insights.md)；
+- `0.4.0` 车主体验（电量历史、环境与胎压、地点回顾、补能习惯、行驶过程、固件履历）与可选的充电费用补录：[契约](docs/product/owner-experience-spec.md)、[openapi-0.4.0.json](docs/api/openapi-0.4.0.json)、[验证记录](docs/testing/owner-experience.md)。
+
+`docs/mobile-api-proposals/` 下的三份交接文档保留为需求来源与历史依据，其中的“待实现”表述不代表当前能力缺失；
+运行时能力以 `/v1/meta` 的声明和各版本冻结 OpenAPI 为准。真实站点与 Grafana 对账仍未执行，见 issue #28。
+
+## 许可证
+
+[GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）。
