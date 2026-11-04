@@ -217,7 +217,7 @@ def driving_analysis_parameters(
 def scoped_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str, list[Any]]:
     """Classify the shared match set once; append the validated IANA timezone."""
     matched, args = match_source(query.echo, vehicle_id)
-    local = f"(m.started_at AT TIME ZONE (${len(args)+1}))"
+    local = f"(m.started_at AT TIME ZONE (${len(args) + 1}))"
     reasons = ", ".join(
         "CASE "
         + " ".join(f"WHEN {condition} THEN '{reason}'" for condition, reason in steps)
@@ -284,7 +284,7 @@ def usage_summary_sql(query: DrivingAnalysisQuery, vehicle_id: int) -> tuple[str
         f"{scoped} SELECT count(*) AS candidate_count, "
         "count(DISTINCT local_date) AS active_days, "
         # The clipped upper bound reaches into the local day that has not ended yet.
-        f"($3::timestamptz > (date_trunc('day', ${len(args)+1}::timestamptz "
+        f"($3::timestamptz > (date_trunc('day', ${len(args) + 1}::timestamptz "
         f"AT TIME ZONE (${len(args)})) AT TIME ZONE (${len(args)}))) AS partial_today, "
         "count(*) FILTER (WHERE valid_distance) AS distance_valid_count, "
         "sum(distance) FILTER (WHERE valid_distance) AS distance_sum_km, "

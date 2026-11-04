@@ -29,7 +29,12 @@ def run(*args, env=None, input=None):
 
 def install(directory, *options, env=None):
     return run(
-        "bash", str(INSTALLER), "--data-dir", str(directory), "--non-interactive", *options,
+        "bash",
+        str(INSTALLER),
+        "--data-dir",
+        str(directory),
+        "--non-interactive",
+        *options,
         env=env,
     )
 
@@ -42,7 +47,9 @@ def read_config(directory):
 @pytest.mark.parametrize("grafana", [False, True])
 def test_all_component_combinations_render_with_isolated_network(tmp_path, mqtt, grafana):
     result = install(
-        tmp_path, "--prepare-only", "--mqtt" if mqtt else "--no-mqtt",
+        tmp_path,
+        "--prepare-only",
+        "--mqtt" if mqtt else "--no-mqtt",
         "--grafana" if grafana else "--no-grafana",
     )
     assert result.returncode == 0, result.stderr
@@ -53,15 +60,23 @@ def test_all_component_combinations_render_with_isolated_network(tmp_path, mqtt,
     assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
     profiles = [name for name, active in (("mqtt", mqtt), ("grafana", grafana)) if active]
     environment = {
-        **os.environ, **config,
+        **os.environ,
+        **config,
         "MILEAF_SOURCE_DIR": str(ROOT),
         "DISABLE_MQTT": "false" if mqtt else "true",
         "COMPOSE_PROFILES": ",".join(profiles),
     }
     try:
         rendered = run(
-            "docker", "compose", "--env-file", str(tmp_path / ".env"),
-            "-f", str(ROOT / "deploy/stack.compose.yml"), "config", "--format", "json",
+            "docker",
+            "compose",
+            "--env-file",
+            str(tmp_path / ".env"),
+            "-f",
+            str(ROOT / "deploy/stack.compose.yml"),
+            "config",
+            "--format",
+            "json",
             env=environment,
         )
     except FileNotFoundError:
@@ -97,11 +112,17 @@ def test_rerun_preserves_identity_secrets_and_saved_choices(tmp_path):
         assert changed[key] == original[key]
 
 
-@pytest.mark.parametrize("options", [
-    ["--bind", "999.0.0.1"], ["--mileaf-port", "65536"],
-    ["--mileaf-port", "4000"], ["--grafana", "--grafana-port", "8080"],
-    ["--data-dir"], ["--wat"],
-])
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--bind", "999.0.0.1"],
+        ["--mileaf-port", "65536"],
+        ["--mileaf-port", "4000"],
+        ["--grafana", "--grafana-port", "8080"],
+        ["--data-dir"],
+        ["--wat"],
+    ],
+)
 def test_bad_arguments_do_not_create_configuration(tmp_path, options):
     assert install(tmp_path, "--prepare-only", *options).returncode != 0
     assert not (tmp_path / ".env").exists()
@@ -123,7 +144,9 @@ def test_install_orders_migration_permissions_auth_before_start(tmp_path, enable
     binary.mkdir()
     docker = binary / "docker"
     # Exercise the orchestration only; do not install software or launch containers.
-    docker.write_text(f"#!{sys.executable}\n" + '''
+    docker.write_text(
+        f"#!{sys.executable}\n"
+        + """
 import json, os, sys
 args = sys.argv[1:]
 with open(os.environ["COMMAND_LOG"], "a") as log:
@@ -134,13 +157,16 @@ if args == ["compose", "up", "--help"]:
     print("--wait-timeout")
 if "compose" in args and "run" in args and "mileaf" in args:
     assert len(sys.stdin.read()) == 64
-''')
+"""
+    )
     docker.chmod(0o700)
     log = tmp_path / "commands.jsonl"
     environment = {**os.environ, "PATH": f"{binary}:{os.environ['PATH']}", "COMMAND_LOG": str(log)}
     result = install(
-        tmp_path / "config", "--mqtt" if enabled else "--no-mqtt",
-        "--grafana" if enabled else "--no-grafana", env=environment,
+        tmp_path / "config",
+        "--mqtt" if enabled else "--no-mqtt",
+        "--grafana" if enabled else "--no-grafana",
+        env=environment,
     )
     assert result.returncode == 0, result.stderr
     commands = [json.loads(line) for line in log.read_text().splitlines()]
@@ -161,12 +187,23 @@ async def test_stack_reader_bootstrap_is_repeatable_and_restricts_permissions(db
     try:
         for _ in range(2):
             result = run(
-                "docker", "run", "--rm", "--pull=never",
-                "--volume", f"{ROOT / 'deploy'}:/bootstrap:ro",
-                "--env", "MILEAF_READER_PASSWORD=synthetic-test-password",
-                "--env", "GRAFANA_READER_PASSWORD=synthetic-grafana-password",
-                "postgres:16-alpine", "psql", "-X", "-q", docker_dsn,
-                "-f", "/bootstrap/stack-reader.sql",
+                "docker",
+                "run",
+                "--rm",
+                "--pull=never",
+                "--volume",
+                f"{ROOT / 'deploy'}:/bootstrap:ro",
+                "--env",
+                "MILEAF_READER_PASSWORD=synthetic-test-password",
+                "--env",
+                "GRAFANA_READER_PASSWORD=synthetic-grafana-password",
+                "postgres:16-alpine",
+                "psql",
+                "-X",
+                "-q",
+                docker_dsn,
+                "-f",
+                "/bootstrap/stack-reader.sql",
             )
             assert result.returncode == 0, result.stderr
         assert await db.fetchval(
@@ -186,12 +223,23 @@ async def test_stack_reader_bootstrap_is_repeatable_and_restricts_permissions(db
         )
         await db.execute("GRANT UPDATE ON public.positions TO mileaf_reader")
         rejected = run(
-            "docker", "run", "--rm", "--pull=never",
-            "--volume", f"{ROOT / 'deploy'}:/bootstrap:ro",
-            "--env", "MILEAF_READER_PASSWORD=synthetic-test-password",
-            "--env", "GRAFANA_READER_PASSWORD=synthetic-grafana-password",
-            "postgres:16-alpine", "psql", "-X", "-q", docker_dsn,
-            "-f", "/bootstrap/stack-reader.sql",
+            "docker",
+            "run",
+            "--rm",
+            "--pull=never",
+            "--volume",
+            f"{ROOT / 'deploy'}:/bootstrap:ro",
+            "--env",
+            "MILEAF_READER_PASSWORD=synthetic-test-password",
+            "--env",
+            "GRAFANA_READER_PASSWORD=synthetic-grafana-password",
+            "postgres:16-alpine",
+            "psql",
+            "-X",
+            "-q",
+            docker_dsn,
+            "-f",
+            "/bootstrap/stack-reader.sql",
         )
         assert rejected.returncode != 0
         assert "unexpected privileges" in rejected.stderr
