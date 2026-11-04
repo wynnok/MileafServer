@@ -37,6 +37,8 @@ async def fill_charging_cost(
         raise APIError(403, ErrorCode.INVALID_REQUEST, "Charging cost writes are disabled")
     try:
         async with pool.acquire() as db, db.transaction(readonly=False):
+            # asyncpg readonly=False emits BEGIN without overriding the pool default.
+            await db.execute("SET TRANSACTION READ WRITE")
             await db.execute("SET LOCAL statement_timeout = '5s'")
             # Atomic predicate is rechecked after concurrent writers release their row lock.
             # TeslaMate ChargeLive.Cost per_kwh uses the larger available energy value.

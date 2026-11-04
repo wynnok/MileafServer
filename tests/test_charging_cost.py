@@ -4,6 +4,7 @@ async def test_cost_opt_in(client):
 
 
 async def test_fill_cost_and_preserve_existing(client, app, db, database_dsn):
+    """Cost entry must override the runtime pool's default read-only transaction."""
     from urllib.parse import urlsplit
 
     role = urlsplit(database_dsn).username
