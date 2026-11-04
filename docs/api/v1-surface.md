@@ -705,7 +705,9 @@ null）、`odometer_change_km`、`negative_odometer_change`、四状态小时、
 | （无 `completed_only`） | — | 由契约固定为 `true`；客户端传值被忽略，回显始终为 `completed_only=true` |
 
 响应回显完整 `query`（`vehicle_id`、裁剪后的有效 `from`/`to`、`tz`、`bucket=null`、
-`time_basis=started_at`、`filters`）与 UTC `as_of`。字段与单位：
+`time_basis=started_at`、`filters`）与 UTC `as_of`。分析字段返回数据库聚合出的未舍入原值
+（不套用「单位归一化与口径来源」的展示精度），展示舍入由客户端决定；单位仍是 km、min、km/h、
+kWh、Wh/km。字段与可空性：
 
 | 字段 | 单位 | 语义与可空性 |
 |---|---|---|
