@@ -16,7 +16,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+**PRs as a request surface: yes.** _(2026-11-05 开源后调整为 `yes`：外部 PR 视为需求提交，走与 issue 相同的标签与状态；`/triage` 读取此标志。)_
 
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents.
 

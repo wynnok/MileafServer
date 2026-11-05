@@ -57,6 +57,11 @@ Docker / compose 安装、只读角色 SQL、远程接入与升级步骤见
 `docs/mobile-api-proposals/` 下的三份交接文档保留为需求来源与历史依据，其中的“待实现”表述不代表当前能力缺失；
 运行时能力以 `/v1/meta` 的声明和各版本冻结 OpenAPI 为准。真实站点与 Grafana 对账仍未执行，见 issue #28。
 
+## 参与贡献
+
+开发环境、质量门禁、PR 约定与许可证边界见 [贡献指南](CONTRIBUTING.md)；
+漏洞请按 [安全策略](SECURITY.md) 走私密报告，不要开公开 issue。
+
 ## 许可证
 
 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）。
